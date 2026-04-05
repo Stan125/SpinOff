@@ -73,7 +73,7 @@ function goHome() {
 async function loadClasses() {
   const list = document.getElementById('class-list');
   try {
-    const data = await dbxPost('/files/list_folder', { path: DBX_ROOT });
+    const data = await dbxPost('/files/list_folder', { path: DBX_ROOT, recursive: false, include_media_info: false, include_deleted: false });
     const folders = data.entries.filter(e => e['.tag'] === 'folder');
     if (folders.length === 0) {
       list.innerHTML = '<div class="empty-state">No classes found in Dropbox/Apps/SpinOffApp</div>';
