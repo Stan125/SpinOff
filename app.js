@@ -7,10 +7,9 @@ const DBX_CONTENT  = 'https://content.dropboxapi.com/2';
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 function startDropboxAuth() {
-  const url = 'https://www.dropbox.com/oauth2/authorize'
+ const url = 'https://www.dropbox.com/oauth2/authorize'
     + '?client_id=' + APP_KEY
     + '&response_type=token'
-    + '&token_access_type=offline'
     + '&redirect_uri=' + encodeURIComponent(REDIRECT_URI);
   window.location.href = url;
 }
