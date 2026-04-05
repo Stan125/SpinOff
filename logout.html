@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpinOff · Logout</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="auth-center screen">
+  <div class="logo">SpinOff</div>
+  <div class="logo-sub" id="msg">Clearing session…</div>
+</div>
+<script>
+  localStorage.removeItem('dbx_token');
+  document.getElementById('msg').textContent = 'Done! Redirecting…';
+  setTimeout(() => { window.location.href = 'index.html'; }, 1000);
+</script>
+</body>
+</html>
