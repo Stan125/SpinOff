@@ -1,0 +1,17 @@
+{
+  "name": "SpinOff",
+  "short_name": "SpinOff",
+  "description": "Your AI spin coach",
+  "start_url": "/SpinOff/index.html",
+  "display": "standalone",
+  "background_color": "#0d0d0f",
+  "theme_color": "#0d0d0f",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}

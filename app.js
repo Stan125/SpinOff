@@ -1,7 +1,7 @@
 // ─── Config ───────────────────────────────────────────────────────────────────
 const APP_KEY      = '1ko2h058qpnvrn1';
 const REDIRECT_URI = 'https://Stan125.github.io/SpinOff/auth.html';
-const DBX_ROOT     = '';
+const DBX_ROOT     = '/Apps/SpinOffApp (1)';
 const DBX_API      = 'https://api.dropboxapi.com/2';
 const DBX_CONTENT  = 'https://content.dropboxapi.com/2';
 
@@ -16,7 +16,7 @@ function startDropboxAuth() {
 
 function logout() {
   localStorage.removeItem('dbx_token');
-  showScreen('auth-screen');
+  window.location.href = 'index.html';
 }
 
 function getToken() {
@@ -52,9 +52,18 @@ async function dbxDownloadText(path) {
   return res.text();
 }
 
-async function dbxGetTempLink(path) {
-  const data = await dbxPost('/files/get_temporary_link', { path });
-  return data.link;
+// Download audio file as a blob URL for offline/gapless playback
+async function dbxDownloadBlob(path) {
+  const res = await fetch(DBX_CONTENT + '/files/download', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + getToken(),
+      'Dropbox-API-Arg': JSON.stringify({ path })
+    }
+  });
+  if (!res.ok) throw new Error('Audio download failed for ' + path);
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
 }
 
 // ─── Screen routing ───────────────────────────────────────────────────────────
@@ -65,7 +74,9 @@ function showScreen(id) {
 }
 
 function goHome() {
+  releaseWakeLock();
   if (audio) { audio.pause(); audio.src = ''; }
+  blobUrls.forEach(url => URL.revokeObjectURL(url));
   window.location.href = 'index.html';
 }
 
@@ -73,10 +84,15 @@ function goHome() {
 async function loadClasses() {
   const list = document.getElementById('class-list');
   try {
-    const data = await dbxPost('/files/list_folder', { path: DBX_ROOT });
+    const data = await dbxPost('/files/list_folder', {
+      path: DBX_ROOT,
+      recursive: false,
+      include_media_info: false,
+      include_deleted: false
+    });
     const folders = data.entries.filter(e => e['.tag'] === 'folder');
     if (folders.length === 0) {
-      list.innerHTML = '<div class="empty-state">No classes found in Dropbox/Apps/SpinOffApp</div>';
+      list.innerHTML = '<div class="empty-state">No classes found.<br>Add a folder to Dropbox/Apps/SpinOffApp</div>';
       return;
     }
     list.innerHTML = '';
@@ -106,28 +122,22 @@ function openClass(folderPath) {
 }
 
 // ─── Class txt parser ─────────────────────────────────────────────────────────
-// Format:
-// ## Song Title | Artist | Type | BPM 138 | RPE 8 | R7 | 01_file.mp3
-// 0:00 Cue text here **bold works**
-// 1:30 Next cue
-//
-// ## Next Song | ...
 function parseTxt(txt, folderPath) {
   const tracks = [];
   const sections = txt.split(/^##\s+/m).filter(s => s.trim());
 
   for (const section of sections) {
-    const lines = section.split('\n').map(l => l.trim()).filter(Boolean);
+    const lines = section.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
     if (lines.length === 0) continue;
 
     const header = lines[0];
-    const parts = header.split('|').map(p => p.trim());
+    const parts  = header.split('|').map(p => p.trim());
 
     const song       = parts[0] || '?';
     const artist     = parts[1] || '';
     const type       = parts[2] || '';
-    const bpm        = (parts[3] || '').replace(/bpm\s*/i, '');
-    const rpe        = (parts[4] || '').replace(/rpe\s*/i, '');
+    const bpm        = (parts[3] || '').replace(/bpm\s*/i, '').trim();
+    const rpe        = (parts[4] || '').replace(/rpe\s*/i, '').trim();
     const resistance = parseInt((parts[5] || '0').replace(/r/i, '')) || 0;
     const filename   = parts[6] || '';
     const audioPath  = filename ? `${folderPath}/${filename}` : null;
@@ -141,90 +151,205 @@ function parseTxt(txt, folderPath) {
       }
     }
 
-    tracks.push({ song, artist, type, bpm, rpe, resistance, audioPath, cues });
+    tracks.push({ song, artist, type, bpm, rpe, resistance, audioPath, cues, blobUrl: null });
   }
   return tracks;
 }
 
-// ─── Runner ───────────────────────────────────────────────────────────────────
-let tracks = [];
+// ─── Runner state ─────────────────────────────────────────────────────────────
+let tracks          = [];
 let currentTrackIdx = 0;
-let currentCueIdx = 0;
-let audio = null;
-let classStartTime = null;
+let currentCueIdx   = -1;
+let audio           = null;
+let isPlaying       = false;
+let classFolder     = '';
+let blobUrls        = [];
+let wakeLock        = null;
+let classElapsed    = 0;
 let classTimerInterval = null;
-let cueWatchInterval = null;
-let isPlaying = false;
-let classFolder = '';
 
+// ─── Wake lock ────────────────────────────────────────────────────────────────
+async function requestWakeLock() {
+  if ('wakeLock' in navigator) {
+    try { wakeLock = await navigator.wakeLock.request('screen'); }
+    catch (e) { console.log('Wake lock unavailable:', e.message); }
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release(); wakeLock = null; }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && isPlaying) requestWakeLock();
+});
+
+// ─── Init runner ──────────────────────────────────────────────────────────────
 async function initRunner(folderPath) {
   classFolder = folderPath;
   audio = document.getElementById('audio-player');
+  document.getElementById('class-title').textContent = formatFolderName(folderPath.split('/').pop());
 
-  const titleEl = document.getElementById('class-title');
-  titleEl.textContent = formatFolderName(folderPath.split('/').pop());
-
+  let txt;
   try {
-    const txt = await dbxDownloadText(folderPath + '/class.txt');
-    tracks = parseTxt(txt, folderPath);
-    if (tracks.length === 0) throw new Error('No tracks found in class.txt');
-    await loadTrack(0);
-    startClassTimer();
+    txt = await dbxDownloadText(folderPath + '/class.txt');
   } catch (e) {
-    alert('Could not load class: ' + e.message);
-    goHome();
+    alert('Could not load class.txt: ' + e.message);
+    goHome(); return;
   }
 
+  tracks = parseTxt(txt, folderPath);
+  if (tracks.length === 0) { alert('No tracks found in class.txt'); goHome(); return; }
+
+  // Show loading UI while preloading all audio
+  setCueDisplay('loading', 'Downloading track 1 / ' + tracks.length + '…');
+  document.getElementById('play-btn').disabled = true;
+
+  await preloadAllTracks();
+
+  document.getElementById('play-btn').disabled = false;
+
+  // Wire audio events
   audio.addEventListener('ended', () => {
     if (currentTrackIdx < tracks.length - 1) nextTrack();
     else endOfClass();
   });
-
   audio.addEventListener('timeupdate', () => {
     updateTrackProgress();
     checkCues();
+    updateCueCountdown();
   });
+  audio.addEventListener('loadedmetadata', updateTrackProgress);
 
-  audio.addEventListener('loadedmetadata', () => {
-    updateTrackProgress();
-  });
+  // Mount and immediately start playing track 1
+  mountTrack(0);
+  startPlayback();
 }
 
-async function loadTrack(idx) {
+// ─── Preloading — downloads all tracks upfront ────────────────────────────────
+async function preloadAllTracks() {
+  for (let i = 0; i < tracks.length; i++) {
+    setCueDisplay('loading', `Downloading track ${i + 1} / ${tracks.length}…`);
+    const track = tracks[i];
+    if (track.audioPath) {
+      try {
+        track.blobUrl = await dbxDownloadBlob(track.audioPath);
+        blobUrls.push(track.blobUrl);
+      } catch (e) {
+        console.error('Preload failed for', track.song, e);
+      }
+    }
+  }
+}
+
+// ─── Mount track (instant — blob already in memory) ───────────────────────────
+function mountTrack(idx) {
   currentTrackIdx = idx;
-  currentCueIdx = -1;
+  currentCueIdx   = -1;
   const track = tracks[idx];
 
-  // Update song card
-  document.getElementById('track-label').textContent = `Track ${idx + 1} / ${tracks.length}`;
-  document.getElementById('song-name').textContent = track.song;
-  document.getElementById('song-artist').textContent = track.artist;
+  document.getElementById('track-label').textContent    = `Track ${idx + 1} / ${tracks.length}`;
+  document.getElementById('song-name').textContent      = track.song;
+  document.getElementById('song-artist').textContent    = track.artist;
   document.getElementById('track-type-tag').textContent = track.type;
-  document.getElementById('meta-bpm').textContent = track.bpm ? `⚡ ${track.bpm} BPM` : '—';
-  document.getElementById('meta-rpe').textContent = track.rpe ? `RPE ${track.rpe}` : '—';
-  document.getElementById('meta-res').textContent = track.resistance ? `R${track.resistance}` : '—';
+  document.getElementById('meta-bpm').textContent       = track.bpm ? `⚡ ${track.bpm} BPM` : '—';
+  document.getElementById('meta-rpe').textContent       = track.rpe ? `RPE ${track.rpe}` : '—';
+  document.getElementById('meta-res').textContent       = track.resistance ? `R${track.resistance}` : '—';
 
   renderIntensityBars(track.resistance);
   renderCueDots(track.cues, -1);
-  document.getElementById('cue-text').textContent = 'Get ready…';
 
-  // Next track info
+  // Show countdown to first cue before audio starts
+  if (track.cues.length) {
+    setCueDisplay('Next cue in', formatTime(track.cues[0].at));
+  } else {
+    setCueDisplay('Cue', '—');
+  }
+
   const next = tracks[idx + 1];
   document.getElementById('next-song').textContent = next ? `${next.song} — ${next.artist}` : 'End of class';
   document.getElementById('next-type').textContent = next ? `${next.type} · RPE ${next.rpe}` : '';
 
-  // Load audio
-  if (track.audioPath) {
-    try {
-      const link = await dbxGetTempLink(track.audioPath);
-      audio.src = link;
-      audio.load();
-    } catch (e) {
-      console.error('Audio load failed:', e);
-    }
-  }
+  if (track.blobUrl) { audio.src = track.blobUrl; audio.load(); }
 
   updateClassProgress();
+}
+
+// ─── Cue checking ─────────────────────────────────────────────────────────────
+function checkCues() {
+  const track = tracks[currentTrackIdx];
+  if (!track || !track.cues.length) return;
+  const t = audio.currentTime;
+
+  let newIdx = -1;
+  for (let i = 0; i < track.cues.length; i++) {
+    if (t >= track.cues[i].at) newIdx = i;
+  }
+
+  if (newIdx !== currentCueIdx) {
+    currentCueIdx = newIdx;
+    if (newIdx >= 0) {
+      document.getElementById('cue-text').innerHTML = renderMarkdown(track.cues[newIdx].text);
+      const cueBox = document.getElementById('cue-box');
+      cueBox.classList.add('cue-flash');
+      setTimeout(() => cueBox.classList.remove('cue-flash'), 600);
+    }
+    renderCueDots(track.cues, newIdx);
+  }
+}
+
+// Update the label with live countdown to next cue
+function updateCueCountdown() {
+  const track = tracks[currentTrackIdx];
+  if (!track || !track.cues.length) return;
+  const t = audio.currentTime;
+
+  if (currentCueIdx === -1) {
+    // Counting down to first cue
+    const secsLeft = Math.max(0, track.cues[0].at - t);
+    document.getElementById('cue-label').textContent = `Next cue in ${formatTime(secsLeft)}`;
+    return;
+  }
+
+  const nextIdx = currentCueIdx + 1;
+  if (nextIdx < track.cues.length) {
+    const secsLeft = Math.max(0, track.cues[nextIdx].at - t);
+    document.getElementById('cue-label').textContent = `Next cue in ${formatTime(secsLeft)}`;
+  } else {
+    document.getElementById('cue-label').textContent = 'Last cue';
+  }
+}
+
+function setCueDisplay(label, text) {
+  document.getElementById('cue-label').textContent = label;
+  document.getElementById('cue-text').textContent  = text;
+}
+
+function renderCueDots(cues, activeIdx) {
+  const container = document.getElementById('cue-dots');
+  container.innerHTML = '';
+  cues.forEach((_, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'cue-dot' + (i === activeIdx ? ' active' : i < activeIdx ? ' done' : '');
+    container.appendChild(dot);
+  });
+}
+
+function renderMarkdown(text) {
+  return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+
+// ─── Track progress bar ───────────────────────────────────────────────────────
+function updateTrackProgress() {
+  const cur = audio.currentTime || 0;
+  const dur = audio.duration   || 0;
+  document.getElementById('track-current').textContent  = formatTime(cur);
+  document.getElementById('track-duration').textContent = formatTime(dur);
+  document.getElementById('track-fill').style.width = dur > 0 ? (cur / dur * 100) + '%' : '0%';
+}
+
+function updateClassProgress() {
+  document.getElementById('class-progress').style.width = (currentTrackIdx / tracks.length * 100) + '%';
 }
 
 function renderIntensityBars(resistance) {
@@ -239,125 +364,82 @@ function renderIntensityBars(resistance) {
   document.getElementById('intensity-val').textContent = resistance ? `${resistance} / 10` : '—';
 }
 
-function renderCueDots(cues, activeIdx) {
-  const container = document.getElementById('cue-dots');
-  container.innerHTML = '';
-  cues.forEach((_, i) => {
-    const dot = document.createElement('div');
-    dot.className = 'cue-dot' + (i === activeIdx ? ' active' : i < activeIdx ? ' done' : '');
-    container.appendChild(dot);
-  });
-}
-
-function checkCues() {
-  const track = tracks[currentTrackIdx];
-  if (!track || !track.cues.length) return;
-  const t = audio.currentTime;
-
-  // Find the last cue whose 'at' has been passed
-  let newIdx = -1;
-  for (let i = 0; i < track.cues.length; i++) {
-    if (t >= track.cues[i].at) newIdx = i;
-  }
-
-  if (newIdx !== currentCueIdx) {
-    currentCueIdx = newIdx;
-    const cueEl = document.getElementById('cue-text');
-    const cueBox = document.getElementById('cue-box');
-
-    if (newIdx >= 0) {
-      cueEl.innerHTML = renderMarkdown(track.cues[newIdx].text);
-      cueBox.classList.add('cue-flash');
-      setTimeout(() => cueBox.classList.remove('cue-flash'), 600);
-    } else {
-      cueEl.textContent = 'Get ready…';
-    }
-    renderCueDots(track.cues, newIdx);
-  }
-}
-
-// Very simple markdown: **bold**
-function renderMarkdown(text) {
-  return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-}
-
-function updateTrackProgress() {
-  const cur = audio.currentTime || 0;
-  const dur = audio.duration || 0;
-  document.getElementById('track-current').textContent = formatTime(cur);
-  document.getElementById('track-duration').textContent = formatTime(dur);
-  const pct = dur > 0 ? (cur / dur) * 100 : 0;
-  document.getElementById('track-fill').style.width = pct + '%';
-}
-
-function updateClassProgress() {
-  const done = currentTrackIdx / tracks.length;
-  document.getElementById('class-progress').style.width = (done * 100) + '%';
-}
-
 function seekTrack(e) {
   if (!audio.duration) return;
-  const bar = document.getElementById('track-bar');
+  const bar  = document.getElementById('track-bar');
   const rect = bar.getBoundingClientRect();
-  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
   audio.currentTime = pct * audio.duration;
 }
 
 // ─── Playback controls ────────────────────────────────────────────────────────
+function startPlayback() {
+  audio.play().then(() => {
+    isPlaying = true;
+    document.getElementById('play-btn').textContent = '⏸';
+    startClassTimer();
+    requestWakeLock();
+  }).catch(e => {
+    // Autoplay blocked — user must tap play manually
+    console.log('Autoplay blocked, waiting for user gesture');
+  });
+}
+
 function togglePlay() {
   if (isPlaying) {
     audio.pause();
     document.getElementById('play-btn').textContent = '▶';
     isPlaying = false;
+    stopClassTimer();
+    releaseWakeLock();
   } else {
     audio.play().catch(e => console.error(e));
     document.getElementById('play-btn').textContent = '⏸';
     isPlaying = true;
-    if (!classStartTime) classStartTime = Date.now();
+    startClassTimer();
+    requestWakeLock();
   }
 }
 
 async function nextTrack() {
   if (currentTrackIdx < tracks.length - 1) {
-    const wasPlaying = isPlaying;
     audio.pause();
-    await loadTrack(currentTrackIdx + 1);
-    if (wasPlaying) {
-      audio.play().catch(e => console.error(e));
-    }
+    mountTrack(currentTrackIdx + 1);
+    if (isPlaying) audio.play().catch(e => console.error(e));
   }
 }
 
 async function prevTrack() {
-  if (audio.currentTime > 3) {
-    audio.currentTime = 0;
-    return;
-  }
+  if (audio.currentTime > 3) { audio.currentTime = 0; return; }
   if (currentTrackIdx > 0) {
-    const wasPlaying = isPlaying;
     audio.pause();
-    await loadTrack(currentTrackIdx - 1);
-    if (wasPlaying) {
-      audio.play().catch(e => console.error(e));
-    }
+    mountTrack(currentTrackIdx - 1);
+    if (isPlaying) audio.play().catch(e => console.error(e));
   }
 }
 
 function endOfClass() {
   isPlaying = false;
   document.getElementById('play-btn').textContent = '▶';
-  document.getElementById('cue-text').textContent = 'Great work! Class complete.';
+  setCueDisplay('Done', 'Great work! Class complete.');
   document.getElementById('class-progress').style.width = '100%';
+  stopClassTimer();
+  releaseWakeLock();
 }
 
-// ─── Class timer ──────────────────────────────────────────────────────────────
+// ─── Class timer — only counts while audio plays ──────────────────────────────
 function startClassTimer() {
-  classStartTime = null;
+  if (classTimerInterval) return;
   classTimerInterval = setInterval(() => {
-    if (!classStartTime || !isPlaying) return;
-    const elapsed = Math.floor((Date.now() - classStartTime) / 1000);
-    document.getElementById('class-elapsed').textContent = formatTime(elapsed);
+    if (!isPlaying) return;
+    classElapsed++;
+    document.getElementById('class-elapsed').textContent = formatTime(classElapsed);
   }, 1000);
+}
+
+function stopClassTimer() {
+  clearInterval(classTimerInterval);
+  classTimerInterval = null;
 }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
