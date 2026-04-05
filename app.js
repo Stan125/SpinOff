@@ -187,40 +187,88 @@ document.addEventListener('visibilitychange', function() {
 // ─── Init runner ──────────────────────────────────────────────────────────────
 async function initRunner(folderPath) {
   audio = document.getElementById('audio-player');
-  document.getElementById('class-title').textContent = formatFolderName(folderPath.split('/').pop());
+  var title = formatFolderName(folderPath.split('/').pop());
+  document.getElementById('class-title').textContent = title;
+  document.getElementById('prep-title').textContent  = title;
 
-  // Show loading state
-  document.getElementById('cue-label').textContent = 'Loading';
-  document.getElementById('cue-text').textContent  = 'Reading class file…';
-  document.getElementById('play-btn').disabled = true;
+  showScreen('prep-screen');
 
   var txt;
   try {
     txt = await dbxDownloadText(folderPath + '/class.txt');
   } catch (e) {
-    alert('Could not load class.txt: ' + e.message);
-    goHome(); return;
+    document.getElementById('prep-track-list').innerHTML =
+      '<div class="empty-state error">Could not load class.txt<br>' + e.message + '</div>';
+    return;
   }
 
   tracks = parseTxt(txt, folderPath);
-  if (tracks.length === 0) { alert('No tracks found in class.txt'); goHome(); return; }
+  if (tracks.length === 0) {
+    document.getElementById('prep-track-list').innerHTML =
+      '<div class="empty-state error">No tracks found in class.txt</div>';
+    return;
+  }
 
-  // Preload all audio
+  renderPrepList();
+
+  // Download audio files one by one, updating status as we go
   for (var i = 0; i < tracks.length; i++) {
-    document.getElementById('cue-text').textContent = 'Downloading track ' + (i + 1) + ' / ' + tracks.length + '…';
     if (tracks[i].audioPath) {
+      setPrepStatus(i, 'loading');
       try {
         tracks[i].blobUrl = await dbxDownloadBlob(tracks[i].audioPath);
         blobUrls.push(tracks[i].blobUrl);
+        setPrepStatus(i, 'ok');
       } catch (e) {
+        setPrepStatus(i, 'error');
         console.error('Preload failed:', tracks[i].song, e);
       }
+    } else {
+      setPrepStatus(i, 'none');
     }
   }
 
-  document.getElementById('play-btn').disabled = false;
+  var startBtn = document.getElementById('start-btn');
+  startBtn.disabled = false;
+  startBtn.textContent = 'Start Class ▶';
+}
 
-  // Wire audio events
+// ─── Prep screen helpers ──────────────────────────────────────────────────────
+function renderPrepList() {
+  var list = document.getElementById('prep-track-list');
+  list.innerHTML = '';
+  tracks.forEach(function(track, i) {
+    var meta = [];
+    if (track.bpm) meta.push(track.bpm + ' BPM');
+    if (track.rpe) meta.push('RPE ' + track.rpe);
+    if (track.resistance) meta.push('R' + track.resistance);
+    meta.push(track.cues.length + ' cue' + (track.cues.length !== 1 ? 's' : ''));
+
+    var row = document.createElement('div');
+    row.className = 'prep-track';
+    row.innerHTML =
+      '<div class="prep-status" id="prep-status-' + i + '">—</div>' +
+      '<div class="prep-info">' +
+        '<div class="prep-name">' + track.song +
+          (track.artist ? '<span class="prep-artist"> — ' + track.artist + '</span>' : '') + '</div>' +
+        '<div class="prep-meta">' + meta.join(' · ') + '</div>' +
+      '</div>' +
+      '<span class="type-tag">' + (track.type || '—') + '</span>';
+    list.appendChild(row);
+  });
+}
+
+function setPrepStatus(i, status) {
+  var el = document.getElementById('prep-status-' + i);
+  if (!el) return;
+  var labels = { loading: '⏳', ok: '✓', error: '✗', none: '—' };
+  el.textContent = labels[status] || '?';
+  el.className = 'prep-status prep-status-' + status;
+}
+
+function startClass() {
+  showScreen('runner-screen');
+
   audio.addEventListener('ended', function() {
     if (currentTrackIdx < tracks.length - 1) nextTrack();
     else endOfClass();
@@ -232,9 +280,7 @@ async function initRunner(folderPath) {
   });
   audio.addEventListener('loadedmetadata', updateTrackProgress);
 
-  // Mount track 1 and autoplay
   mountTrack(0);
-  // Small delay to let audio.load() settle before playing
   setTimeout(function() { startPlayback(); }, 300);
 }
 

@@ -11,7 +11,23 @@
 </head>
 <body>
 
-<div id="runner-screen" class="screen">
+<div id="prep-screen" class="screen hidden">
+  <div class="app-shell">
+    <div class="top-bar">
+      <button class="icon-btn" onclick="goHome()">←</button>
+      <div class="class-title-sm" id="prep-title">Loading…</div>
+      <div style="width:44px"></div>
+    </div>
+    <div class="section-label">Tracks</div>
+    <div id="prep-track-list" class="prep-list">
+      <div class="loading-state">Reading class file…</div>
+    </div>
+    <button class="btn-primary" id="start-btn" onclick="startClass()" disabled
+            style="width:100%;margin-top:20px">Downloading…</button>
+  </div>
+</div>
+
+<div id="runner-screen" class="screen hidden">
   <div class="app-shell">
 
     <div class="top-bar">
