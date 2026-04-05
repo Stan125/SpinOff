@@ -59,8 +59,11 @@
     </div>
 
     <div class="cue-box" id="cue-box">
-      <div class="cue-label" id="cue-label">Cue</div>
+      <div class="cue-now-label">Now</div>
       <div class="cue-text" id="cue-text">Get ready…</div>
+      <div class="cue-sep"></div>
+      <div class="cue-label" id="cue-label">Next cue in</div>
+      <div class="cue-next-text" id="cue-next-text">—</div>
       <div class="cue-dots" id="cue-dots"></div>
     </div>
 
@@ -72,7 +75,8 @@
       </div>
     </div>
 
-    <audio id="audio-player" preload="auto"></audio>
+    <audio id="audio-a" preload="auto"></audio>
+    <audio id="audio-b" preload="auto"></audio>
 
     <div class="controls">
       <button class="ctrl-btn" onclick="prevTrack()">⏮</button>

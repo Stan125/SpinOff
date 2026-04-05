@@ -245,12 +245,12 @@ html, body {
   background: rgba(200,134,10,0.18);
 }
 .cue-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
+  font-family: var(--font-display);
+  font-size: 30px;
+  letter-spacing: 1px;
   color: var(--accent2);
-  margin-bottom: 6px;
+  line-height: 1;
+  margin-bottom: 2px;
 }
 .cue-text {
   font-size: 15px;
@@ -258,6 +258,27 @@ html, body {
   color: var(--text);
 }
 .cue-text strong { color: var(--accent2); font-weight: 500; }
+
+.cue-now-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.cue-sep {
+  height: 1px;
+  background: rgba(200,134,10,0.2);
+  margin: 10px 0 8px;
+}
+.cue-next-text {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-top: 3px;
+}
+.cue-next-text strong { color: var(--accent2); font-weight: 500; }
 
 .cue-dots { display: flex; gap: 5px; margin-top: 10px; flex-wrap: wrap; }
 .cue-dot  { width: 6px; height: 6px; border-radius: 50%; background: rgba(0,0,0,0.12); }

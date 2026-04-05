@@ -24,6 +24,13 @@ function getToken() {
 }
 
 // ─── Dropbox API helpers ───────────────────────────────────────────────────────
+// HTTP headers must be ASCII — escape any non-ASCII chars in path JSON
+function dropboxArg(obj) {
+  return JSON.stringify(obj).replace(/[^\x00-\x7F]/g, function(c) {
+    return '\\u' + ('000' + c.charCodeAt(0).toString(16)).slice(-4);
+  });
+}
+
 async function dbxPost(endpoint, body) {
   const res = await fetch(DBX_API + endpoint, {
     method: 'POST',
@@ -45,7 +52,7 @@ async function dbxDownloadText(path) {
     method: 'POST',
     headers: {
       'Authorization': 'Bearer ' + getToken(),
-      'Dropbox-API-Arg': JSON.stringify({ path: path })
+      'Dropbox-API-Arg': dropboxArg({ path: path })
     }
   });
   if (!res.ok) throw new Error('Download failed for ' + path);
@@ -57,7 +64,7 @@ async function dbxDownloadBlob(path) {
     method: 'POST',
     headers: {
       'Authorization': 'Bearer ' + getToken(),
-      'Dropbox-API-Arg': JSON.stringify({ path: path })
+      'Dropbox-API-Arg': dropboxArg({ path: path })
     }
   });
   if (!res.ok) throw new Error('Audio download failed for ' + path);
@@ -74,7 +81,8 @@ function showScreen(id) {
 
 function goHome() {
   releaseWakeLock();
-  if (audio) { audio.pause(); audio.src = ''; }
+  if (audioA) { audioA.pause(); audioA.src = ''; }
+  if (audioB) { audioB.pause(); audioB.src = ''; }
   blobUrls.forEach(function(u) { URL.revokeObjectURL(u); });
   window.location.href = 'index.html';
 }
@@ -161,7 +169,9 @@ function parseTxt(txt, folderPath) {
 var tracks          = [];
 var currentTrackIdx = 0;
 var currentCueIdx   = -1;
-var audio           = null;
+var audio           = null;  // active audio element
+var audioA          = null;  // element A (ping-pong)
+var audioB          = null;  // element B (ping-pong)
 var isPlaying       = false;
 var blobUrls        = [];
 var wakeLock        = null;
@@ -186,7 +196,9 @@ document.addEventListener('visibilitychange', function() {
 
 // ─── Init runner ──────────────────────────────────────────────────────────────
 async function initRunner(folderPath) {
-  audio = document.getElementById('audio-player');
+  audioA = document.getElementById('audio-a');
+  audioB = document.getElementById('audio-b');
+  audio  = audioA;
   var title = formatFolderName(folderPath.split('/').pop());
   document.getElementById('class-title').textContent = title;
   document.getElementById('prep-title').textContent  = title;
@@ -270,17 +282,25 @@ function startClass() {
   try {
     showScreen('runner-screen');
 
-    audio.addEventListener('ended', function() {
-      if (currentTrackIdx < tracks.length - 1) nextTrack();
-      else endOfClass();
+    // Wire events to BOTH elements; each listener ignores the inactive one
+    [audioA, audioB].forEach(function(el) {
+      el.addEventListener('ended', function() {
+        if (audio !== el) return;
+        if (currentTrackIdx < tracks.length - 1) nextTrack();
+        else endOfClass();
+      });
+      el.addEventListener('timeupdate', function() {
+        if (audio !== el) return;
+        updateTrackProgress(); checkCues(); updateCueCountdown();
+      });
+      el.addEventListener('loadedmetadata', function() {
+        if (audio !== el) return;
+        updateTrackProgress();
+      });
     });
-    audio.addEventListener('timeupdate', function() {
-      updateTrackProgress();
-      checkCues();
-      updateCueCountdown();
-    });
-    audio.addEventListener('loadedmetadata', updateTrackProgress);
 
+    // Load track 0 into active element; mountTrack pre-buffers track 1 into standby
+    if (tracks[0].blobUrl) audio.src = tracks[0].blobUrl;
     mountTrack(0);
     startPlayback();
   } catch (e) {
@@ -290,7 +310,7 @@ function startClass() {
   }
 }
 
-// ─── Mount track ──────────────────────────────────────────────────────────────
+// ─── Mount track (UI only — audio src is managed by startClass/nextTrack/prevTrack)
 function mountTrack(idx) {
   currentTrackIdx = idx;
   currentCueIdx   = -1;
@@ -307,20 +327,25 @@ function mountTrack(idx) {
   renderIntensityBars(track.resistance);
   renderCueDots(track.cues, -1);
 
-  // Countdown to first cue
+  // Cue display: current = "Get ready", upcoming = first cue
+  document.getElementById('cue-text').textContent = 'Get ready…';
   if (track.cues.length) {
-    document.getElementById('cue-label').textContent = 'Next cue in';
-    document.getElementById('cue-text').textContent  = formatTime(track.cues[0].at);
+    document.getElementById('cue-label').textContent    = 'Next cue in ' + formatTime(track.cues[0].at);
+    document.getElementById('cue-next-text').innerHTML  = renderMarkdown(track.cues[0].text);
   } else {
-    document.getElementById('cue-label').textContent = 'Cue';
-    document.getElementById('cue-text').textContent  = '—';
+    document.getElementById('cue-label').textContent    = '—';
+    document.getElementById('cue-next-text').textContent = '—';
   }
 
   var next = tracks[idx + 1];
   document.getElementById('next-song').textContent = next ? next.song + ' — ' + next.artist : 'End of class';
   document.getElementById('next-type').textContent = next ? next.type + ' · RPE ' + next.rpe : '';
 
-  if (track.blobUrl) { audio.src = track.blobUrl; }
+  // Pre-buffer the next track into the standby audio element
+  var standby = (audio === audioA) ? audioB : audioA;
+  if (standby && idx + 1 < tracks.length && tracks[idx + 1].blobUrl) {
+    standby.src = tracks[idx + 1].blobUrl;
+  }
 
   updateClassProgress();
 }
@@ -340,6 +365,9 @@ function checkCues() {
     currentCueIdx = newIdx;
     if (newIdx >= 0) {
       document.getElementById('cue-text').innerHTML = renderMarkdown(track.cues[newIdx].text);
+      // Update upcoming cue preview
+      var upcoming = track.cues[newIdx + 1];
+      document.getElementById('cue-next-text').innerHTML = upcoming ? renderMarkdown(upcoming.text) : '—';
       var cueBox = document.getElementById('cue-box');
       cueBox.classList.add('cue-flash');
       setTimeout(function() { cueBox.classList.remove('cue-flash'); }, 600);
@@ -418,10 +446,17 @@ function seekTrack(e) {
 
 // ─── Playback ─────────────────────────────────────────────────────────────────
 function startPlayback() {
+  // Auto-advance to first track that has audio if the current one doesn't
   if (!audio.src || audio.src === window.location.href) {
-    document.getElementById('cue-label').textContent = 'No audio';
-    document.getElementById('cue-text').textContent  = 'Track has no audio file. Tap ▶ to skip.';
-    return;
+    var first = currentTrackIdx;
+    while (first < tracks.length && !tracks[first].blobUrl) first++;
+    if (first >= tracks.length) {
+      document.getElementById('cue-label').textContent = 'No audio loaded';
+      document.getElementById('cue-next-text').textContent = 'All audio downloads failed.';
+      return;
+    }
+    audio.src = tracks[first].blobUrl;
+    mountTrack(first);
   }
   audio.play().then(function() {
     isPlaying = true;
@@ -430,7 +465,7 @@ function startPlayback() {
     requestWakeLock();
   }).catch(function(e) {
     document.getElementById('cue-label').textContent = 'Play error';
-    document.getElementById('cue-text').textContent  = e.name + ': ' + e.message;
+    document.getElementById('cue-next-text').textContent = e.name + ': ' + e.message;
     console.error('Play failed:', e);
   });
 }
@@ -461,8 +496,14 @@ function togglePlay() {
 
 function nextTrack() {
   if (currentTrackIdx < tracks.length - 1) {
-    audio.pause();
-    mountTrack(currentTrackIdx + 1);
+    var prev = audio;
+    // Swap to standby element — it already has the next track pre-buffered
+    audio = (audio === audioA) ? audioB : audioA;
+    prev.pause();
+    mountTrack(currentTrackIdx + 1); // updates currentTrackIdx, UI, pre-buffers N+2 into prev
+    // Ensure active element actually has the right src (fallback)
+    var track = tracks[currentTrackIdx];
+    if (track.blobUrl && audio.src !== track.blobUrl) audio.src = track.blobUrl;
     if (isPlaying) audio.play().catch(function(e) { console.error(e); });
   }
 }
@@ -471,7 +512,10 @@ function prevTrack() {
   if (audio.currentTime > 3) { audio.currentTime = 0; return; }
   if (currentTrackIdx > 0) {
     audio.pause();
-    mountTrack(currentTrackIdx - 1);
+    // Going back: load directly on current element (no swap needed)
+    var idx = currentTrackIdx - 1;
+    mountTrack(idx);
+    if (tracks[idx].blobUrl) audio.src = tracks[idx].blobUrl;
     if (isPlaying) audio.play().catch(function(e) { console.error(e); });
   }
 }
