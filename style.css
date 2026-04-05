@@ -402,6 +402,16 @@ html, body {
 }
 .icon-btn:hover { background: rgba(0,0,0,0.04); color: var(--text); }
 
+.demo-link {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  text-decoration: none;
+  margin-top: 4px;
+}
+.demo-link:hover { color: var(--text); }
+
 /* ── Prep screen ──────────────────────────────────────────────────────────── */
 .prep-list { display: flex; flex-direction: column; gap: 8px; }
 

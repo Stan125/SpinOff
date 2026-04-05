@@ -1,6 +1,6 @@
 // ─── Config ───────────────────────────────────────────────────────────────────
 const APP_KEY      = '1ko2h058qpnvrn1';
-const REDIRECT_URI = 'https://Stan125.github.io/SpinOff/auth.html';
+const REDIRECT_URI = new URL('auth.html', window.location.href).href;
 const DBX_ROOT     = '';
 const DBX_API      = 'https://api.dropboxapi.com/2';
 const DBX_CONTENT  = 'https://content.dropboxapi.com/2';
@@ -68,7 +68,15 @@ async function dbxDownloadBlob(path) {
     }
   });
   if (!res.ok) throw new Error('Audio download failed for ' + path);
-  const blob = await res.blob();
+  var blob = await res.blob();
+  // Dropbox often returns application/octet-stream — retype from file extension
+  if (!blob.type || blob.type === 'application/octet-stream') {
+    var ext = path.split('.').pop().toLowerCase();
+    var mimeTypes = { mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac',
+                      wav: 'audio/wav', ogg: 'audio/ogg', flac: 'audio/flac',
+                      opus: 'audio/ogg; codecs=opus', webm: 'audio/webm' };
+    blob = blob.slice(0, blob.size, mimeTypes[ext] || 'audio/mpeg');
+  }
   return URL.createObjectURL(blob);
 }
 
@@ -365,9 +373,15 @@ function checkCues() {
     currentCueIdx = newIdx;
     if (newIdx >= 0) {
       document.getElementById('cue-text').innerHTML = renderMarkdown(track.cues[newIdx].text);
-      // Update upcoming cue preview
+      // Upcoming: next cue in this track, or first cue of next track
       var upcoming = track.cues[newIdx + 1];
-      document.getElementById('cue-next-text').innerHTML = upcoming ? renderMarkdown(upcoming.text) : '—';
+      if (upcoming) {
+        document.getElementById('cue-next-text').innerHTML = renderMarkdown(upcoming.text);
+      } else {
+        var nextTrk = tracks[currentTrackIdx + 1];
+        document.getElementById('cue-next-text').innerHTML =
+          nextTrk && nextTrk.cues.length ? renderMarkdown(nextTrk.cues[0].text) : '—';
+      }
       var cueBox = document.getElementById('cue-box');
       cueBox.classList.add('cue-flash');
       setTimeout(function() { cueBox.classList.remove('cue-flash'); }, 600);
@@ -393,7 +407,9 @@ function updateCueCountdown() {
     var secsLeft2 = Math.max(0, track.cues[nextIdx].at - t);
     document.getElementById('cue-label').textContent = 'Next cue in ' + formatTime(secsLeft2);
   } else {
-    document.getElementById('cue-label').textContent = 'Last cue';
+    var nextTrk = tracks[currentTrackIdx + 1];
+    document.getElementById('cue-label').textContent =
+      nextTrk ? 'Up next: ' + nextTrk.song : 'Last cue';
   }
 }
 

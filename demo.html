@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#f4f1ec">
+  <title>SpinOff · Demo</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="prep-screen" class="screen hidden">
+  <div class="app-shell">
+    <div class="top-bar">
+      <button class="icon-btn" onclick="goHome()">←</button>
+      <div class="class-title-sm" id="prep-title">Demo Class</div>
+      <div style="width:44px"></div>
+    </div>
+    <div class="section-label">Tracks</div>
+    <div id="prep-track-list" class="prep-list">
+      <div class="loading-state">Generating audio…</div>
+    </div>
+    <button class="btn-primary" id="start-btn" onclick="startClass()" disabled
+            style="width:100%;margin-top:20px">Generating…</button>
+  </div>
+</div>
+
+<div id="runner-screen" class="screen hidden">
+  <div class="app-shell">
+
+    <div class="top-bar">
+      <button class="icon-btn" onclick="goHome()">←</button>
+      <div class="class-title-sm" id="class-title">Demo Class</div>
+      <div class="class-elapsed" id="class-elapsed">0:00</div>
+    </div>
+
+    <div class="progress-bar"><div class="progress-fill" id="class-progress"></div></div>
+
+    <div class="song-card" id="song-card">
+      <div class="song-label">
+        <span id="track-label">Track 1</span>
+        <span id="track-type-tag" class="type-tag">—</span>
+      </div>
+      <div class="song-name" id="song-name">—</div>
+      <div class="song-artist" id="song-artist">—</div>
+      <div class="song-meta">
+        <span class="meta-pill" id="meta-bpm">—</span>
+        <span class="meta-pill" id="meta-rpe">—</span>
+        <span class="meta-pill" id="meta-res">—</span>
+      </div>
+    </div>
+
+    <div class="intensity-row">
+      <span class="intensity-label">Resistance</span>
+      <div class="intensity-bars" id="intensity-bars"></div>
+      <span class="intensity-val" id="intensity-val">—</span>
+    </div>
+
+    <div class="cue-box" id="cue-box">
+      <div class="cue-now-label">Now</div>
+      <div class="cue-text" id="cue-text">Get ready…</div>
+      <div class="cue-sep"></div>
+      <div class="cue-label" id="cue-label">Next cue in</div>
+      <div class="cue-next-text" id="cue-next-text">—</div>
+      <div class="cue-dots" id="cue-dots"></div>
+    </div>
+
+    <div class="next-card">
+      <span class="next-label">Up next</span>
+      <div class="next-info">
+        <div class="next-song" id="next-song">—</div>
+        <div class="next-type" id="next-type">—</div>
+      </div>
+    </div>
+
+    <audio id="audio-a" preload="auto"></audio>
+    <audio id="audio-b" preload="auto"></audio>
+
+    <div class="controls">
+      <button class="ctrl-btn" onclick="prevTrack()">⏮</button>
+      <button class="ctrl-btn primary" id="play-btn" onclick="togglePlay()">▶</button>
+      <button class="ctrl-btn" onclick="nextTrack()">⏭</button>
+    </div>
+
+    <div class="track-progress-row">
+      <span class="track-time" id="track-current">0:00</span>
+      <div class="track-progress-bar" id="track-bar" onclick="seekTrack(event)">
+        <div class="track-progress-fill" id="track-fill"></div>
+      </div>
+      <span class="track-time" id="track-duration">0:00</span>
+    </div>
+
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+// Override goHome so the back button stays on demo.html
+function goHome() {
+  releaseWakeLock();
+  if (audioA) { audioA.pause(); audioA.src = ''; }
+  if (audioB) { audioB.pause(); audioB.src = ''; }
+  blobUrls.forEach(function(u) { URL.revokeObjectURL(u); });
+  window.location.href = 'demo.html';
+}
+
+// Generate a mono 16-bit PCM WAV blob URL
+function makeTone(hz, seconds) {
+  var sr = 44100;
+  var n  = Math.floor(sr * seconds);
+  var buf  = new ArrayBuffer(44 + n * 2);
+  var view = new DataView(buf);
+  var ws = function(off, s) {
+    for (var i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
+  };
+  ws(0, 'RIFF'); view.setUint32(4, 36 + n * 2, true);
+  ws(8, 'WAVE'); ws(12, 'fmt ');
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);  view.setUint32(24, sr, true);
+  view.setUint32(28, sr * 2, true); view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true); ws(36, 'data');
+  view.setUint32(40, n * 2, true);
+  for (var i = 0; i < n; i++) {
+    var t   = i / sr;
+    var env = Math.min(t * 4, (seconds - t) * 4, 1);
+    // Gentle pulse at 120 bpm so it feels rhythmic
+    var beat = 0.75 + 0.25 * Math.exp(-((t % 0.5) * 30));
+    var v = (Math.sin(2 * Math.PI * hz * t) * 0.45 +
+             Math.sin(2 * Math.PI * hz * 2 * t) * 0.12 +
+             Math.sin(2 * Math.PI * hz * 3 * t) * 0.05) * env * beat;
+    view.setInt16(44 + i * 2, Math.round(v * 28000), true);
+  }
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+
+var DEMO_TRACKS = [
+  { song: 'Easy Rider',    artist: 'SpinOff Demo', type: 'Warm-up',   bpm: '110', rpe: '3', resistance: 2, hz: 220, dur: 50,
+    cues: [
+      { at:  5, text: 'Find a comfortable cadence, loosen up the legs' },
+      { at: 20, text: 'Start to feel the pedals — light resistance' },
+      { at: 35, text: '**Add a touch of resistance** — almost ready to work' }
+    ]},
+  { song: 'The Climb',     artist: 'SpinOff Demo', type: 'Climb',     bpm: '138', rpe: '8', resistance: 8, hz: 330, dur: 50,
+    cues: [
+      { at:  5, text: '**Dial up to resistance 8** — settle in' },
+      { at: 18, text: 'Stay seated, drive from the hips. **Keep cadence above 80.**' },
+      { at: 32, text: 'One more click of resistance — grind it out' },
+      { at: 43, text: '**Empty the tank.** Final push!' }
+    ]},
+  { song: 'Sandstorm',     artist: 'SpinOff Demo', type: 'Sprint',    bpm: '160', rpe: '9', resistance: 4, hz: 440, dur: 50,
+    cues: [
+      { at:  5, text: '**Drop the resistance** — this is all speed. Sprint!' },
+      { at: 16, text: 'Max effort — go go go!' },
+      { at: 28, text: 'Recover on the breakdown. Breathe.' },
+      { at: 38, text: '**Full gas again!** Last 12 seconds!' }
+    ]},
+  { song: 'Float It Out',  artist: 'SpinOff Demo', type: 'Cool-down', bpm: '95',  rpe: '3', resistance: 2, hz: 165, dur: 50,
+    cues: [
+      { at:  5, text: 'Bring it right down. Shake out the legs.' },
+      { at: 20, text: 'Easy spin — let your heart rate drop naturally.' },
+      { at: 35, text: '**Great work today.** Float it out and stretch.' }
+    ]}
+];
+
+window.addEventListener('load', function() {
+  audioA = document.getElementById('audio-a');
+  audioB = document.getElementById('audio-b');
+  audio  = audioA;
+
+  showScreen('prep-screen');
+
+  tracks = DEMO_TRACKS.map(function(d) {
+    return { song: d.song, artist: d.artist, type: d.type, bpm: d.bpm, rpe: d.rpe,
+             resistance: d.resistance, audioPath: null, cues: d.cues, blobUrl: null,
+             _hz: d.hz, _dur: d.dur };
+  });
+
+  renderPrepList();
+
+  // Generate audio one track at a time so the UI can update between each
+  function genNext(i) {
+    if (i >= tracks.length) {
+      var btn = document.getElementById('start-btn');
+      btn.disabled = false;
+      btn.textContent = 'Start Demo ▶';
+      return;
+    }
+    setPrepStatus(i, 'loading');
+    setTimeout(function() {
+      tracks[i].blobUrl = makeTone(tracks[i]._hz, tracks[i]._dur);
+      blobUrls.push(tracks[i].blobUrl);
+      setPrepStatus(i, 'ok');
+      genNext(i + 1);
+    }, 0);
+  }
+  genNext(0);
+});
+</script>
+</body>
+</html>
