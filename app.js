@@ -1,7 +1,7 @@
 // ─── Config ───────────────────────────────────────────────────────────────────
 const APP_KEY      = '1ko2h058qpnvrn1';
 const REDIRECT_URI = 'https://Stan125.github.io/SpinOff/auth.html';
-const DBX_ROOT     = '/Apps/SpinOffApp';
+const DBX_ROOT     = '';
 const DBX_API      = 'https://api.dropboxapi.com/2';
 const DBX_CONTENT  = 'https://content.dropboxapi.com/2';
 
