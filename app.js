@@ -281,7 +281,7 @@ function startClass() {
   audio.addEventListener('loadedmetadata', updateTrackProgress);
 
   mountTrack(0);
-  setTimeout(function() { startPlayback(); }, 300);
+  startPlayback();
 }
 
 // ─── Mount track ──────────────────────────────────────────────────────────────
@@ -314,7 +314,7 @@ function mountTrack(idx) {
   document.getElementById('next-song').textContent = next ? next.song + ' — ' + next.artist : 'End of class';
   document.getElementById('next-type').textContent = next ? next.type + ' · RPE ' + next.rpe : '';
 
-  if (track.blobUrl) { audio.src = track.blobUrl; audio.load(); }
+  if (track.blobUrl) { audio.src = track.blobUrl; }
 
   updateClassProgress();
 }
