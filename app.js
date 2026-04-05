@@ -267,21 +267,27 @@ function setPrepStatus(i, status) {
 }
 
 function startClass() {
-  showScreen('runner-screen');
+  try {
+    showScreen('runner-screen');
 
-  audio.addEventListener('ended', function() {
-    if (currentTrackIdx < tracks.length - 1) nextTrack();
-    else endOfClass();
-  });
-  audio.addEventListener('timeupdate', function() {
-    updateTrackProgress();
-    checkCues();
-    updateCueCountdown();
-  });
-  audio.addEventListener('loadedmetadata', updateTrackProgress);
+    audio.addEventListener('ended', function() {
+      if (currentTrackIdx < tracks.length - 1) nextTrack();
+      else endOfClass();
+    });
+    audio.addEventListener('timeupdate', function() {
+      updateTrackProgress();
+      checkCues();
+      updateCueCountdown();
+    });
+    audio.addEventListener('loadedmetadata', updateTrackProgress);
 
-  mountTrack(0);
-  startPlayback();
+    mountTrack(0);
+    startPlayback();
+  } catch (e) {
+    document.getElementById('prep-track-list').innerHTML =
+      '<div class="empty-state error">startClass error: ' + e.message + '</div>';
+    showScreen('prep-screen');
+  }
 }
 
 // ─── Mount track ──────────────────────────────────────────────────────────────
@@ -412,14 +418,20 @@ function seekTrack(e) {
 
 // ─── Playback ─────────────────────────────────────────────────────────────────
 function startPlayback() {
+  if (!audio.src || audio.src === window.location.href) {
+    document.getElementById('cue-label').textContent = 'No audio';
+    document.getElementById('cue-text').textContent  = 'Track has no audio file. Tap ▶ to skip.';
+    return;
+  }
   audio.play().then(function() {
     isPlaying = true;
     document.getElementById('play-btn').textContent = '⏸';
     startClassTimer();
     requestWakeLock();
   }).catch(function(e) {
-    // Autoplay blocked by browser — user taps play
-    console.log('Autoplay blocked:', e.message);
+    document.getElementById('cue-label').textContent = 'Play error';
+    document.getElementById('cue-text').textContent  = e.name + ': ' + e.message;
+    console.error('Play failed:', e);
   });
 }
 
@@ -431,11 +443,19 @@ function togglePlay() {
     stopClassTimer();
     releaseWakeLock();
   } else {
-    audio.play().catch(function(e) { console.error(e); });
-    document.getElementById('play-btn').textContent = '⏸';
-    isPlaying = true;
-    startClassTimer();
-    requestWakeLock();
+    if (!audio.src || audio.src === window.location.href) {
+      nextTrack(); return;
+    }
+    audio.play().then(function() {
+      document.getElementById('play-btn').textContent = '⏸';
+      isPlaying = true;
+      startClassTimer();
+      requestWakeLock();
+    }).catch(function(e) {
+      document.getElementById('cue-label').textContent = 'Play error';
+      document.getElementById('cue-text').textContent  = e.name + ': ' + e.message;
+      console.error('togglePlay failed:', e);
+    });
   }
 }
 
