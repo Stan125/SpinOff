@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SpinOff</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="auth-screen" class="screen">
+  <div class="auth-center">
+    <div class="logo">SpinOff</div>
+    <div class="logo-sub">your AI spin coach</div>
+    <button class="btn-primary" onclick="startDropboxAuth()">Connect Dropbox</button>
+  </div>
+</div>
+
+<div id="home-screen" class="screen hidden">
+  <div class="app-shell">
+    <div class="top-bar">
+      <div class="logo-sm">SpinOff</div>
+      <button class="icon-btn" onclick="logout()" title="Disconnect">⏏</button>
+    </div>
+    <div class="section-label">Your Classes</div>
+    <div id="class-list" class="class-list">
+      <div class="loading-state">Loading classes…</div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+  window.addEventListener('load', () => {
+    const token = localStorage.getItem('dbx_token');
+    if (token) {
+      showScreen('home-screen');
+      loadClasses();
+    } else {
+      showScreen('auth-screen');
+    }
+  });
+</script>
+</body>
+</html>

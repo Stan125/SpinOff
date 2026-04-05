@@ -1,0 +1,29 @@
+# Example class — replace with your own content
+# Lines starting with # are ignored
+
+## Warm-up Flow | Various | Warm-up | BPM 110 | RPE 4 | R3 | 01_warmup.mp3
+
+0:00 Welcome everyone. Find a comfortable cadence, loosen up the legs.
+0:30 Start to feel the pedals — light resistance, easy spin.
+1:30 Bring your heart rate up gently. Breathe deep.
+3:00 Start adding a touch more resistance. We're almost ready to work.
+
+## Thunderstruck | AC/DC | Climb | BPM 138 | RPE 8 | R7 | 02_thunderstruck.mp3
+
+0:00 Dial up to resistance 7. Settle in, find your position.
+0:45 Push through the chorus — stay seated, drive from the hips. **Keep cadence above 80.**
+1:52 Bridge coming — one more click of resistance. Grind it out.
+3:30 Final push — **empty the tank.** 30 seconds left on this climb.
+
+## Sandstorm | Darude | Sprint | BPM 150 | RPE 9 | R5 | 03_sandstorm.mp3
+
+0:00 **Drop the resistance** — this is all speed. Sprint!
+0:32 Hit that chorus at max effort. Go go go!
+1:15 Recover on the breakdown. Breathe. You earned it.
+2:00 Here we go again — **full gas!**
+
+## Cool Down | Various | Cool-down | BPM 100 | RPE 3 | R2 | 04_cooldown.mp3
+
+0:00 Bring it right down. Shake out the legs.
+1:00 Nice easy spin. Let your heart rate drop naturally.
+2:30 **Great work today.** Float it out and stretch when you're off the bike.

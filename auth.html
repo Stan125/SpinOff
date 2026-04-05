@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpinOff · Connecting…</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="auth-center screen">
+  <div class="logo">SpinOff</div>
+  <div class="logo-sub" id="auth-msg">Connecting to Dropbox…</div>
+</div>
+<script>
+  const hash = window.location.hash.substring(1);
+  const params = new URLSearchParams(hash);
+  const token = params.get('access_token');
+
+  if (token) {
+    localStorage.setItem('dbx_token', token);
+    document.getElementById('auth-msg').textContent = 'Connected! Taking you back…';
+    setTimeout(() => { window.location.href = 'index.html'; }, 800);
+  } else {
+    document.getElementById('auth-msg').textContent = 'Something went wrong. Please try again.';
+    setTimeout(() => { window.location.href = 'index.html'; }, 2000);
+  }
+</script>
+</body>
+</html>
