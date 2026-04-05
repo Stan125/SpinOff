@@ -7,16 +7,17 @@ const DBX_CONTENT  = 'https://content.dropboxapi.com/2';
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 function startDropboxAuth() {
-  const url = `https://www.dropbox.com/oauth2/authorize`
-    + `?client_id=${APP_KEY}`
-    + `&response_type=token`
-    + `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+  const url = 'https://www.dropbox.com/oauth2/authorize'
+    + '?client_id=' + APP_KEY
+    + '&response_type=token'
+    + '&token_access_type=offline'
+    + '&redirect_uri=' + encodeURIComponent(REDIRECT_URI);
   window.location.href = url;
 }
 
 function logout() {
   localStorage.removeItem('dbx_token');
-  showScreen('auth-screen');
+  window.location.href = 'index.html';
 }
 
 function getToken() {
@@ -35,7 +36,7 @@ async function dbxPost(endpoint, body) {
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Dropbox API error ${res.status}: ${err}`);
+    throw new Error('Dropbox API error ' + res.status + ': ' + err);
   }
   return res.json();
 }
@@ -45,59 +46,75 @@ async function dbxDownloadText(path) {
     method: 'POST',
     headers: {
       'Authorization': 'Bearer ' + getToken(),
-      'Dropbox-API-Arg': JSON.stringify({ path })
+      'Dropbox-API-Arg': JSON.stringify({ path: path })
     }
   });
   if (!res.ok) throw new Error('Download failed for ' + path);
   return res.text();
 }
 
-async function dbxGetTempLink(path) {
-  const data = await dbxPost('/files/get_temporary_link', { path });
-  return data.link;
+async function dbxDownloadBlob(path) {
+  const res = await fetch(DBX_CONTENT + '/files/download', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + getToken(),
+      'Dropbox-API-Arg': JSON.stringify({ path: path })
+    }
+  });
+  if (!res.ok) throw new Error('Audio download failed for ' + path);
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
 }
 
 // ─── Screen routing ───────────────────────────────────────────────────────────
 function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
-  const el = document.getElementById(id);
+  document.querySelectorAll('.screen').forEach(function(s) { s.classList.add('hidden'); });
+  var el = document.getElementById(id);
   if (el) el.classList.remove('hidden');
 }
 
 function goHome() {
+  releaseWakeLock();
   if (audio) { audio.pause(); audio.src = ''; }
+  blobUrls.forEach(function(u) { URL.revokeObjectURL(u); });
   window.location.href = 'index.html';
 }
 
 // ─── Class list ───────────────────────────────────────────────────────────────
 async function loadClasses() {
-  const list = document.getElementById('class-list');
+  var list = document.getElementById('class-list');
   try {
-    const data = await dbxPost('/files/list_folder', { path: DBX_ROOT, recursive: false, include_media_info: false, include_deleted: false });
-    const folders = data.entries.filter(e => e['.tag'] === 'folder');
+    var data = await dbxPost('/files/list_folder', {
+      path: DBX_ROOT,
+      recursive: false,
+      include_media_info: false,
+      include_deleted: false,
+      include_has_explicit_shared_members: false,
+      include_mounted_folders: true
+    });
+    var folders = data.entries.filter(function(e) { return e['.tag'] === 'folder'; });
     if (folders.length === 0) {
       list.innerHTML = '<div class="empty-state">No classes found in Dropbox/Apps/SpinOffApp</div>';
       return;
     }
     list.innerHTML = '';
-    for (const folder of folders) {
-      const card = document.createElement('div');
+    folders.forEach(function(folder) {
+      var card = document.createElement('div');
       card.className = 'class-card';
-      card.innerHTML = `
-        <div class="class-card-name">${formatFolderName(folder.name)}</div>
-        <div class="class-card-sub">${folder.name}</div>
-        <div class="class-card-arrow">›</div>
-      `;
-      card.addEventListener('click', () => openClass(folder.path_lower));
+      card.innerHTML =
+        '<div class="class-card-name">' + formatFolderName(folder.name) + '</div>' +
+        '<div class="class-card-sub">' + folder.name + '</div>' +
+        '<div class="class-card-arrow">›</div>';
+      card.addEventListener('click', function() { openClass(folder.path_lower); });
       list.appendChild(card);
-    }
+    });
   } catch (e) {
-    list.innerHTML = `<div class="empty-state error">Could not load classes.<br>${e.message}</div>`;
+    list.innerHTML = '<div class="empty-state error">Could not load classes.<br>' + e.message + '</div>';
   }
 }
 
 function formatFolderName(name) {
-  return name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return name.replace(/-/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
 }
 
 function openClass(folderPath) {
@@ -106,263 +123,322 @@ function openClass(folderPath) {
 }
 
 // ─── Class txt parser ─────────────────────────────────────────────────────────
-// Format:
-// ## Song Title | Artist | Type | BPM 138 | RPE 8 | R7 | 01_file.mp3
-// 0:00 Cue text here **bold works**
-// 1:30 Next cue
-//
-// ## Next Song | ...
 function parseTxt(txt, folderPath) {
-  const tracks = [];
-  const sections = txt.split(/^##\s+/m).filter(s => s.trim());
+  var tracks = [];
+  var sections = txt.split(/^##\s+/m).filter(function(s) { return s.trim(); });
 
-  for (const section of sections) {
-    const lines = section.split('\n').map(l => l.trim()).filter(Boolean);
-    if (lines.length === 0) continue;
+  sections.forEach(function(section) {
+    var lines = section.split('\n')
+      .map(function(l) { return l.trim(); })
+      .filter(function(l) { return l && !l.startsWith('#'); });
+    if (lines.length === 0) return;
 
-    const header = lines[0];
-    const parts = header.split('|').map(p => p.trim());
+    var parts = lines[0].split('|').map(function(p) { return p.trim(); });
+    var song       = parts[0] || '?';
+    var artist     = parts[1] || '';
+    var type       = parts[2] || '';
+    var bpm        = (parts[3] || '').replace(/bpm\s*/i, '').trim();
+    var rpe        = (parts[4] || '').replace(/rpe\s*/i, '').trim();
+    var resistance = parseInt((parts[5] || '0').replace(/r/i, '')) || 0;
+    var filename   = parts[6] || '';
+    var audioPath  = filename ? folderPath + '/' + filename : null;
 
-    const song       = parts[0] || '?';
-    const artist     = parts[1] || '';
-    const type       = parts[2] || '';
-    const bpm        = (parts[3] || '').replace(/bpm\s*/i, '');
-    const rpe        = (parts[4] || '').replace(/rpe\s*/i, '');
-    const resistance = parseInt((parts[5] || '0').replace(/r/i, '')) || 0;
-    const filename   = parts[6] || '';
-    const audioPath  = filename ? `${folderPath}/${filename}` : null;
-
-    const cues = [];
-    for (let i = 1; i < lines.length; i++) {
-      const match = lines[i].match(/^(\d+):(\d{2})\s+(.+)$/);
+    var cues = [];
+    for (var i = 1; i < lines.length; i++) {
+      var match = lines[i].match(/^(\d+):(\d{2})\s+(.+)$/);
       if (match) {
-        const secs = parseInt(match[1]) * 60 + parseInt(match[2]);
+        var secs = parseInt(match[1]) * 60 + parseInt(match[2]);
         cues.push({ at: secs, text: match[3] });
       }
     }
 
-    tracks.push({ song, artist, type, bpm, rpe, resistance, audioPath, cues });
-  }
+    tracks.push({ song: song, artist: artist, type: type, bpm: bpm, rpe: rpe,
+                  resistance: resistance, audioPath: audioPath, cues: cues, blobUrl: null });
+  });
   return tracks;
 }
 
-// ─── Runner ───────────────────────────────────────────────────────────────────
-let tracks = [];
-let currentTrackIdx = 0;
-let currentCueIdx = 0;
-let audio = null;
-let classStartTime = null;
-let classTimerInterval = null;
-let cueWatchInterval = null;
-let isPlaying = false;
-let classFolder = '';
+// ─── Runner state ─────────────────────────────────────────────────────────────
+var tracks          = [];
+var currentTrackIdx = 0;
+var currentCueIdx   = -1;
+var audio           = null;
+var isPlaying       = false;
+var blobUrls        = [];
+var wakeLock        = null;
+var classElapsed    = 0;
+var classTimerInterval = null;
 
+// ─── Wake lock ────────────────────────────────────────────────────────────────
+async function requestWakeLock() {
+  if ('wakeLock' in navigator) {
+    try { wakeLock = await navigator.wakeLock.request('screen'); }
+    catch (e) { console.log('Wake lock:', e.message); }
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release(); wakeLock = null; }
+}
+
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible' && isPlaying) requestWakeLock();
+});
+
+// ─── Init runner ──────────────────────────────────────────────────────────────
 async function initRunner(folderPath) {
-  classFolder = folderPath;
   audio = document.getElementById('audio-player');
+  document.getElementById('class-title').textContent = formatFolderName(folderPath.split('/').pop());
 
-  const titleEl = document.getElementById('class-title');
-  titleEl.textContent = formatFolderName(folderPath.split('/').pop());
+  // Show loading state
+  document.getElementById('cue-label').textContent = 'Loading';
+  document.getElementById('cue-text').textContent  = 'Reading class file…';
+  document.getElementById('play-btn').disabled = true;
 
+  var txt;
   try {
-    const txt = await dbxDownloadText(folderPath + '/class.txt');
-    tracks = parseTxt(txt, folderPath);
-    if (tracks.length === 0) throw new Error('No tracks found in class.txt');
-    await loadTrack(0);
-    startClassTimer();
+    txt = await dbxDownloadText(folderPath + '/class.txt');
   } catch (e) {
-    alert('Could not load class: ' + e.message);
-    goHome();
+    alert('Could not load class.txt: ' + e.message);
+    goHome(); return;
   }
 
-  audio.addEventListener('ended', () => {
+  tracks = parseTxt(txt, folderPath);
+  if (tracks.length === 0) { alert('No tracks found in class.txt'); goHome(); return; }
+
+  // Preload all audio
+  for (var i = 0; i < tracks.length; i++) {
+    document.getElementById('cue-text').textContent = 'Downloading track ' + (i + 1) + ' / ' + tracks.length + '…';
+    if (tracks[i].audioPath) {
+      try {
+        tracks[i].blobUrl = await dbxDownloadBlob(tracks[i].audioPath);
+        blobUrls.push(tracks[i].blobUrl);
+      } catch (e) {
+        console.error('Preload failed:', tracks[i].song, e);
+      }
+    }
+  }
+
+  document.getElementById('play-btn').disabled = false;
+
+  // Wire audio events
+  audio.addEventListener('ended', function() {
     if (currentTrackIdx < tracks.length - 1) nextTrack();
     else endOfClass();
   });
-
-  audio.addEventListener('timeupdate', () => {
+  audio.addEventListener('timeupdate', function() {
     updateTrackProgress();
     checkCues();
+    updateCueCountdown();
   });
+  audio.addEventListener('loadedmetadata', updateTrackProgress);
 
-  audio.addEventListener('loadedmetadata', () => {
-    updateTrackProgress();
-  });
+  // Mount track 1 and autoplay
+  mountTrack(0);
+  // Small delay to let audio.load() settle before playing
+  setTimeout(function() { startPlayback(); }, 300);
 }
 
-async function loadTrack(idx) {
+// ─── Mount track ──────────────────────────────────────────────────────────────
+function mountTrack(idx) {
   currentTrackIdx = idx;
-  currentCueIdx = -1;
-  const track = tracks[idx];
+  currentCueIdx   = -1;
+  var track = tracks[idx];
 
-  // Update song card
-  document.getElementById('track-label').textContent = `Track ${idx + 1} / ${tracks.length}`;
-  document.getElementById('song-name').textContent = track.song;
-  document.getElementById('song-artist').textContent = track.artist;
+  document.getElementById('track-label').textContent    = 'Track ' + (idx + 1) + ' / ' + tracks.length;
+  document.getElementById('song-name').textContent      = track.song;
+  document.getElementById('song-artist').textContent    = track.artist;
   document.getElementById('track-type-tag').textContent = track.type;
-  document.getElementById('meta-bpm').textContent = track.bpm ? `⚡ ${track.bpm} BPM` : '—';
-  document.getElementById('meta-rpe').textContent = track.rpe ? `RPE ${track.rpe}` : '—';
-  document.getElementById('meta-res').textContent = track.resistance ? `R${track.resistance}` : '—';
+  document.getElementById('meta-bpm').textContent       = track.bpm ? '⚡ ' + track.bpm + ' BPM' : '—';
+  document.getElementById('meta-rpe').textContent       = track.rpe ? 'RPE ' + track.rpe : '—';
+  document.getElementById('meta-res').textContent       = track.resistance ? 'R' + track.resistance : '—';
 
   renderIntensityBars(track.resistance);
   renderCueDots(track.cues, -1);
-  document.getElementById('cue-text').textContent = 'Get ready…';
 
-  // Next track info
-  const next = tracks[idx + 1];
-  document.getElementById('next-song').textContent = next ? `${next.song} — ${next.artist}` : 'End of class';
-  document.getElementById('next-type').textContent = next ? `${next.type} · RPE ${next.rpe}` : '';
-
-  // Load audio
-  if (track.audioPath) {
-    try {
-      const link = await dbxGetTempLink(track.audioPath);
-      audio.src = link;
-      audio.load();
-    } catch (e) {
-      console.error('Audio load failed:', e);
-    }
+  // Countdown to first cue
+  if (track.cues.length) {
+    document.getElementById('cue-label').textContent = 'Next cue in';
+    document.getElementById('cue-text').textContent  = formatTime(track.cues[0].at);
+  } else {
+    document.getElementById('cue-label').textContent = 'Cue';
+    document.getElementById('cue-text').textContent  = '—';
   }
+
+  var next = tracks[idx + 1];
+  document.getElementById('next-song').textContent = next ? next.song + ' — ' + next.artist : 'End of class';
+  document.getElementById('next-type').textContent = next ? next.type + ' · RPE ' + next.rpe : '';
+
+  if (track.blobUrl) { audio.src = track.blobUrl; audio.load(); }
 
   updateClassProgress();
 }
 
-function renderIntensityBars(resistance) {
-  const container = document.getElementById('intensity-bars');
-  container.innerHTML = '';
-  for (let i = 1; i <= 10; i++) {
-    const bar = document.createElement('div');
-    bar.className = 'intensity-bar' + (i <= resistance ? ' on' : '');
-    bar.style.height = (6 + i * 2.2) + 'px';
-    container.appendChild(bar);
-  }
-  document.getElementById('intensity-val').textContent = resistance ? `${resistance} / 10` : '—';
-}
-
-function renderCueDots(cues, activeIdx) {
-  const container = document.getElementById('cue-dots');
-  container.innerHTML = '';
-  cues.forEach((_, i) => {
-    const dot = document.createElement('div');
-    dot.className = 'cue-dot' + (i === activeIdx ? ' active' : i < activeIdx ? ' done' : '');
-    container.appendChild(dot);
-  });
-}
-
+// ─── Cue logic ────────────────────────────────────────────────────────────────
 function checkCues() {
-  const track = tracks[currentTrackIdx];
+  var track = tracks[currentTrackIdx];
   if (!track || !track.cues.length) return;
-  const t = audio.currentTime;
+  var t = audio.currentTime;
 
-  // Find the last cue whose 'at' has been passed
-  let newIdx = -1;
-  for (let i = 0; i < track.cues.length; i++) {
+  var newIdx = -1;
+  for (var i = 0; i < track.cues.length; i++) {
     if (t >= track.cues[i].at) newIdx = i;
   }
 
   if (newIdx !== currentCueIdx) {
     currentCueIdx = newIdx;
-    const cueEl = document.getElementById('cue-text');
-    const cueBox = document.getElementById('cue-box');
-
     if (newIdx >= 0) {
-      cueEl.innerHTML = renderMarkdown(track.cues[newIdx].text);
+      document.getElementById('cue-text').innerHTML = renderMarkdown(track.cues[newIdx].text);
+      var cueBox = document.getElementById('cue-box');
       cueBox.classList.add('cue-flash');
-      setTimeout(() => cueBox.classList.remove('cue-flash'), 600);
-    } else {
-      cueEl.textContent = 'Get ready…';
+      setTimeout(function() { cueBox.classList.remove('cue-flash'); }, 600);
     }
     renderCueDots(track.cues, newIdx);
   }
 }
 
-// Very simple markdown: **bold**
+function updateCueCountdown() {
+  var track = tracks[currentTrackIdx];
+  if (!track || !track.cues.length) return;
+  var t = audio.currentTime;
+
+  if (currentCueIdx === -1) {
+    // Before first cue — count down to it
+    var secsLeft = Math.max(0, track.cues[0].at - t);
+    document.getElementById('cue-label').textContent = 'Next cue in ' + formatTime(secsLeft);
+    return;
+  }
+
+  var nextIdx = currentCueIdx + 1;
+  if (nextIdx < track.cues.length) {
+    var secsLeft2 = Math.max(0, track.cues[nextIdx].at - t);
+    document.getElementById('cue-label').textContent = 'Next cue in ' + formatTime(secsLeft2);
+  } else {
+    document.getElementById('cue-label').textContent = 'Last cue';
+  }
+}
+
 function renderMarkdown(text) {
   return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
 }
 
+function renderCueDots(cues, activeIdx) {
+  var container = document.getElementById('cue-dots');
+  container.innerHTML = '';
+  cues.forEach(function(_, i) {
+    var dot = document.createElement('div');
+    dot.className = 'cue-dot' + (i === activeIdx ? ' active' : i < activeIdx ? ' done' : '');
+    container.appendChild(dot);
+  });
+}
+
+// ─── Track progress ───────────────────────────────────────────────────────────
 function updateTrackProgress() {
-  const cur = audio.currentTime || 0;
-  const dur = audio.duration || 0;
-  document.getElementById('track-current').textContent = formatTime(cur);
+  var cur = audio.currentTime || 0;
+  var dur = audio.duration   || 0;
+  document.getElementById('track-current').textContent  = formatTime(cur);
   document.getElementById('track-duration').textContent = formatTime(dur);
-  const pct = dur > 0 ? (cur / dur) * 100 : 0;
-  document.getElementById('track-fill').style.width = pct + '%';
+  document.getElementById('track-fill').style.width = (dur > 0 ? (cur / dur * 100) : 0) + '%';
 }
 
 function updateClassProgress() {
-  const done = currentTrackIdx / tracks.length;
-  document.getElementById('class-progress').style.width = (done * 100) + '%';
+  document.getElementById('class-progress').style.width = (currentTrackIdx / tracks.length * 100) + '%';
+}
+
+function renderIntensityBars(resistance) {
+  var container = document.getElementById('intensity-bars');
+  container.innerHTML = '';
+  for (var i = 1; i <= 10; i++) {
+    var bar = document.createElement('div');
+    bar.className = 'intensity-bar' + (i <= resistance ? ' on' : '');
+    bar.style.height = (6 + i * 2.2) + 'px';
+    container.appendChild(bar);
+  }
+  document.getElementById('intensity-val').textContent = resistance ? resistance + ' / 10' : '—';
 }
 
 function seekTrack(e) {
   if (!audio.duration) return;
-  const bar = document.getElementById('track-bar');
-  const rect = bar.getBoundingClientRect();
-  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  var bar  = document.getElementById('track-bar');
+  var rect = bar.getBoundingClientRect();
+  var pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
   audio.currentTime = pct * audio.duration;
 }
 
-// ─── Playback controls ────────────────────────────────────────────────────────
+// ─── Playback ─────────────────────────────────────────────────────────────────
+function startPlayback() {
+  audio.play().then(function() {
+    isPlaying = true;
+    document.getElementById('play-btn').textContent = '⏸';
+    startClassTimer();
+    requestWakeLock();
+  }).catch(function(e) {
+    // Autoplay blocked by browser — user taps play
+    console.log('Autoplay blocked:', e.message);
+  });
+}
+
 function togglePlay() {
   if (isPlaying) {
     audio.pause();
     document.getElementById('play-btn').textContent = '▶';
     isPlaying = false;
+    stopClassTimer();
+    releaseWakeLock();
   } else {
-    audio.play().catch(e => console.error(e));
+    audio.play().catch(function(e) { console.error(e); });
     document.getElementById('play-btn').textContent = '⏸';
     isPlaying = true;
-    if (!classStartTime) classStartTime = Date.now();
+    startClassTimer();
+    requestWakeLock();
   }
 }
 
-async function nextTrack() {
+function nextTrack() {
   if (currentTrackIdx < tracks.length - 1) {
-    const wasPlaying = isPlaying;
     audio.pause();
-    await loadTrack(currentTrackIdx + 1);
-    if (wasPlaying) {
-      audio.play().catch(e => console.error(e));
-    }
+    mountTrack(currentTrackIdx + 1);
+    if (isPlaying) audio.play().catch(function(e) { console.error(e); });
   }
 }
 
-async function prevTrack() {
-  if (audio.currentTime > 3) {
-    audio.currentTime = 0;
-    return;
-  }
+function prevTrack() {
+  if (audio.currentTime > 3) { audio.currentTime = 0; return; }
   if (currentTrackIdx > 0) {
-    const wasPlaying = isPlaying;
     audio.pause();
-    await loadTrack(currentTrackIdx - 1);
-    if (wasPlaying) {
-      audio.play().catch(e => console.error(e));
-    }
+    mountTrack(currentTrackIdx - 1);
+    if (isPlaying) audio.play().catch(function(e) { console.error(e); });
   }
 }
 
 function endOfClass() {
   isPlaying = false;
   document.getElementById('play-btn').textContent = '▶';
-  document.getElementById('cue-text').textContent = 'Great work! Class complete.';
+  document.getElementById('cue-label').textContent = 'Done';
+  document.getElementById('cue-text').textContent  = 'Great work! Class complete.';
   document.getElementById('class-progress').style.width = '100%';
+  stopClassTimer();
+  releaseWakeLock();
 }
 
 // ─── Class timer ──────────────────────────────────────────────────────────────
 function startClassTimer() {
-  classStartTime = null;
-  classTimerInterval = setInterval(() => {
-    if (!classStartTime || !isPlaying) return;
-    const elapsed = Math.floor((Date.now() - classStartTime) / 1000);
-    document.getElementById('class-elapsed').textContent = formatTime(elapsed);
+  if (classTimerInterval) return;
+  classTimerInterval = setInterval(function() {
+    if (!isPlaying) return;
+    classElapsed++;
+    document.getElementById('class-elapsed').textContent = formatTime(classElapsed);
   }, 1000);
+}
+
+function stopClassTimer() {
+  clearInterval(classTimerInterval);
+  classTimerInterval = null;
 }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 function formatTime(secs) {
-  const s = Math.floor(secs);
-  const m = Math.floor(s / 60);
+  var s = Math.floor(secs);
+  var m = Math.floor(s / 60);
   return m + ':' + String(s % 60).padStart(2, '0');
 }
