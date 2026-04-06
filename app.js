@@ -416,25 +416,28 @@ function setPrepStatus(i, status) {
 function startClass() {
   showScreen('runner-screen');
 
-  // iOS Safari: play a silent buffer synchronously within the user gesture to
-  // unlock the AudioContext. Also works if context was created earlier (initRunner).
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  var unlock = audioCtx.createBuffer(1, 1, 22050);
+  // Close the pre-decode context (created outside user gesture, suspended on iOS).
+  // A context created HERE, inside the tap handler, starts running on iOS.
+  if (audioCtx) { try { audioCtx.close(); } catch (e) {} }
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // iOS unlock: play a silent 1-sample buffer synchronously within the gesture.
+  var unlock = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
   var unlockSrc = audioCtx.createBufferSource();
   unlockSrc.buffer = unlock;
   unlockSrc.connect(audioCtx.destination);
   unlockSrc.start(0);
-  audioCtx.resume();
 
   if (audioBuffers && audioBuffers.some(function(b) { return b !== null; })) {
-    // Already decoded by initRunner — start immediately, no delay
+    // Pre-decoded by initRunner — start immediately.
+    // AudioBuffers are context-agnostic: same sample rate, works with new context.
     trackOffsets = [0];
     mountTrack(0);
     playFromOffset(0, 0);
     return;
   }
 
-  // Demo path: decode now (tones are tiny, takes <100 ms)
+  // Demo path (no initRunner): decode now — tones are tiny, <100 ms.
   audioBuffers = new Array(tracks.length).fill(null);
   document.getElementById('cue-text').textContent  = 'Preparing audio…';
   document.getElementById('cue-label').textContent = '';
