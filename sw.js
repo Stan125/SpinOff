@@ -1,4 +1,4 @@
-const CACHE = 'spinoff-v2';
+const CACHE = 'spinoff-v3';
 const STATIC = [
   './',
   './index.html',

@@ -429,6 +429,17 @@ function setPrepStatus(i, status) {
   el.className = 'prep-status prep-status-' + status;
 }
 
+// decodeAudioData wrapper using callbacks — works on all iOS Safari versions.
+// The Promise-returning form of decodeAudioData is only guaranteed from iOS 14.1+;
+// on older versions it returns undefined, so awaiting it gives undefined (not a buffer).
+function decodeAudio(ctx, arrayBuffer) {
+  return new Promise(function(resolve, reject) {
+    ctx.decodeAudioData(arrayBuffer, resolve, function(e) {
+      reject(e || new Error('decodeAudioData failed'));
+    });
+  });
+}
+
 // ─── Start class (must be called from a user gesture) ─────────────────────────
 async function startClass() {
   showScreen('runner-screen');
@@ -477,8 +488,17 @@ async function startClass() {
   if (firstAudioIdx >= 0) {
     try {
       var ab0 = await trackArrayBuffer(tracks[firstAudioIdx]);
-      if (ab0) audioBuffers[firstAudioIdx] = await audioCtx.decodeAudioData(ab0);
-    } catch (e) { console.warn('Decode error track ' + firstAudioIdx + ':', e); }
+      if (ab0) audioBuffers[firstAudioIdx] = await decodeAudio(audioCtx, ab0);
+    } catch (e) {
+      console.error('Decode error track ' + firstAudioIdx + ':', e);
+      document.getElementById('cue-text').textContent  = 'Audio error: ' + (e && e.message ? e.message : String(e));
+      document.getElementById('cue-label').textContent = 'Format may be unsupported on this device';
+      return;
+    }
+  } else {
+    document.getElementById('cue-text').textContent  = 'No audio found';
+    document.getElementById('cue-label').textContent = 'Check that tracks have audio files';
+    return;
   }
 
   trackOffsets = [0];
@@ -489,7 +509,7 @@ async function startClass() {
     if (i === firstAudioIdx) continue;   // already decoded above
     (function(idx) {
       trackArrayBuffer(tracks[idx])
-        .then(function(ab) { return ab ? audioCtx.decodeAudioData(ab) : null; })
+        .then(function(ab) { return ab ? decodeAudio(audioCtx, ab) : null; })
         .then(function(buf) { if (buf) audioBuffers[idx] = buf; })
         .catch(function(e) { console.warn('Decode error track ' + idx + ':', e); });
     })(i);
