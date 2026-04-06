@@ -72,7 +72,7 @@ function mimeFromPath(path) {
   return MIME_MAP[path.split('.').pop().toLowerCase()] || 'audio/mpeg';
 }
 
-// Download audio from Dropbox, persist to IndexedDB, return a blob URL
+// Download audio from Dropbox, persist to IndexedDB, return { arrayBuffer, mime }
 async function dbxDownloadBlob(path) {
   const res = await fetch(DBX_CONTENT + '/files/download', {
     method: 'POST',
@@ -87,7 +87,7 @@ async function dbxDownloadBlob(path) {
   // Persist to IndexedDB so this class works offline next time
   idbPut('audio', { path: path, buffer: arrayBuf, mime: mime })
     .catch(function(e) { console.warn('IDB audio save failed:', e); });
-  return URL.createObjectURL(new Blob([arrayBuf], { type: mime }));
+  return { arrayBuffer: arrayBuf, mime: mime };
 }
 
 // ─── IndexedDB helpers ────────────────────────────────────────────────────────
@@ -129,6 +129,16 @@ function idbPut(store, value) {
   });
 }
 
+function idbDelete(store, key) {
+  return idbOpen().then(function(db) {
+    return new Promise(function(resolve, reject) {
+      var req = db.transaction(store, 'readwrite').objectStore(store).delete(key);
+      req.onsuccess = function() { resolve(); };
+      req.onerror   = function() { reject(req.error); };
+    });
+  });
+}
+
 function idbGetAllKeys(store) {
   return idbOpen().then(function(db) {
     return new Promise(function(resolve, reject) {
@@ -144,6 +154,19 @@ function showScreen(id) {
   document.querySelectorAll('.screen').forEach(function(s) { s.classList.add('hidden'); });
   var el = document.getElementById(id);
   if (el) el.classList.remove('hidden');
+}
+
+async function clearClassCache() {
+  var folderPath = sessionStorage.getItem('current_class');
+  if (!folderPath) return;
+  var btn = document.getElementById('clear-cache-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Clearing…'; }
+  await Promise.all(tracks.map(function(t) {
+    if (!t.audioPath) return Promise.resolve();
+    return idbDelete('audio', t.audioPath).catch(function() {});
+  }));
+  await idbDelete('classes', folderPath).catch(function() {});
+  window.location.reload();
 }
 
 function goHome() {
@@ -305,8 +328,11 @@ async function initRunner(folderPath) {
         setPrepStatus(ci, 'loading');
         var audioRec = await idbGet('audio', tracks[ci].audioPath).catch(function() { return null; });
         if (audioRec) {
-          tracks[ci].blobUrl = URL.createObjectURL(new Blob([audioRec.buffer], { type: audioRec.mime }));
-          blobUrls.push(tracks[ci].blobUrl);
+          // Keep the raw ArrayBuffer so startClass() can decode it directly on
+          // the unlocked AudioContext — avoids the blob-URL fetch round-trip
+          // that is unreliable on iOS Safari.
+          tracks[ci].rawArrayBuffer = audioRec.buffer;
+          tracks[ci].mime = audioRec.mime;
           setPrepStatus(ci, 'ok');
         } else {
           setPrepStatus(ci, 'error');
@@ -339,8 +365,9 @@ async function initRunner(folderPath) {
       if (tracks[i].audioPath) {
         setPrepStatus(i, 'loading');
         try {
-          tracks[i].blobUrl = await dbxDownloadBlob(tracks[i].audioPath);
-          blobUrls.push(tracks[i].blobUrl);
+          var dl = await dbxDownloadBlob(tracks[i].audioPath);
+          tracks[i].rawArrayBuffer = dl.arrayBuffer;
+          tracks[i].mime = dl.mime;
           setPrepStatus(i, 'ok');
         } catch (e) {
           setPrepStatus(i, 'error');
@@ -427,26 +454,43 @@ async function startClass() {
   document.getElementById('cue-label').textContent = '';
   document.getElementById('cue-next-text').textContent = '';
 
-  if (tracks[0] && tracks[0].blobUrl) {
+  // Helper: get an ArrayBuffer for a track — prefers rawArrayBuffer (IDB cache
+  // path) to avoid the blob-URL fetch round-trip that fails silently on iOS.
+  function trackArrayBuffer(track) {
+    if (track.rawArrayBuffer) {
+      var ab = track.rawArrayBuffer;
+      track.rawArrayBuffer = null;   // detached after decodeAudioData; clear ref
+      return Promise.resolve(ab);
+    }
+    if (track.blobUrl) {
+      return fetch(track.blobUrl).then(function(r) { return r.arrayBuffer(); });
+    }
+    return Promise.resolve(null);
+  }
+
+  // Decode the first track that actually has audio so playback can start
+  // immediately, then decode the rest in the background.
+  var firstAudioIdx = -1;
+  for (var fi = 0; fi < tracks.length; fi++) {
+    if (tracks[fi].rawArrayBuffer || tracks[fi].blobUrl) { firstAudioIdx = fi; break; }
+  }
+  if (firstAudioIdx >= 0) {
     try {
-      var r0 = await fetch(tracks[0].blobUrl);
-      var ab0 = await r0.arrayBuffer();
-      audioBuffers[0] = await audioCtx.decodeAudioData(ab0);
-    } catch (e) { console.warn('Decode error track 0:', e); }
+      var ab0 = await trackArrayBuffer(tracks[firstAudioIdx]);
+      if (ab0) audioBuffers[firstAudioIdx] = await audioCtx.decodeAudioData(ab0);
+    } catch (e) { console.warn('Decode error track ' + firstAudioIdx + ':', e); }
   }
 
   trackOffsets = [0];
-  mountTrack(0);
   playFromOffset(0, 0);
 
   // Decode remaining tracks in the background (they'll be ready before needed).
-  for (var i = 1; i < tracks.length; i++) {
+  for (var i = 0; i < tracks.length; i++) {
+    if (i === firstAudioIdx) continue;   // already decoded above
     (function(idx) {
-      if (!tracks[idx].blobUrl) return;
-      fetch(tracks[idx].blobUrl)
-        .then(function(r) { return r.arrayBuffer(); })
-        .then(function(ab) { return audioCtx.decodeAudioData(ab); })
-        .then(function(buf) { audioBuffers[idx] = buf; })
+      trackArrayBuffer(tracks[idx])
+        .then(function(ab) { return ab ? audioCtx.decodeAudioData(ab) : null; })
+        .then(function(buf) { if (buf) audioBuffers[idx] = buf; })
         .catch(function(e) { console.warn('Decode error track ' + idx + ':', e); });
     })(i);
   }
@@ -474,6 +518,12 @@ async function playFromOffset(idx, offset) {
   }
   if (idx >= tracks.length) { endOfClass(); return; }
 
+  // Update track state and UI before scheduling audio so the song card always
+  // reflects the track that is actually playing (fixes Next button display bug).
+  currentTrackIdx = idx;
+  currentCueIdx   = -1;
+  mountTrack(idx);
+
   var buffer = audioBuffers[idx];
   var now    = audioCtx.currentTime;
   trackStartCtxTime = now - offset;
@@ -484,7 +534,6 @@ async function playFromOffset(idx, offset) {
   currentSource.start(now, offset);
 
   isPlaying = true;
-  currentTrackIdx = idx;
   pausedTrackOffset = 0;
   document.getElementById('play-btn').textContent = 'PAUSE';
   requestWakeLock();
