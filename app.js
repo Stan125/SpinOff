@@ -360,19 +360,9 @@ async function initRunner(folderPath) {
       .catch(function(e) { console.warn('IDB class save failed:', e); });
   }
 
-  // ── Pre-decode audio into AudioBuffers while user reads the track list ──────
-  // AudioContext created here (may be suspended on iOS — that's fine for decoding).
-  // startClass() will unlock and resume it within the user gesture.
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  // Audio is decoded in startClass() after the AudioContext is unlocked by a
+  // user gesture. Decoding here (on a suspended context) is unreliable on iOS.
   audioBuffers = new Array(tracks.length).fill(null);
-  await Promise.all(tracks.map(function(track, idx) {
-    if (!track.blobUrl) return Promise.resolve();
-    return fetch(track.blobUrl)
-      .then(function(r) { return r.arrayBuffer(); })
-      .then(function(ab) { return audioCtx.decodeAudioData(ab); })
-      .then(function(buf) { audioBuffers[idx] = buf; })
-      .catch(function(e) { console.warn('Pre-decode failed:', track.song, e); });
-  }));
 
   var startBtn = document.getElementById('start-btn');
   startBtn.disabled = false;
@@ -413,48 +403,53 @@ function setPrepStatus(i, status) {
 }
 
 // ─── Start class (must be called from a user gesture) ─────────────────────────
-function startClass() {
+async function startClass() {
   showScreen('runner-screen');
 
-  // Close the pre-decode context (created outside user gesture, suspended on iOS).
-  // A context created HERE, inside the tap handler, starts running on iOS.
+  // Create AudioContext inside the user gesture so iOS starts it in a resumable
+  // state. Never reuse a context from initRunner — on iOS Safari, AudioBuffers
+  // decoded on a suspended context are unreliable when played back.
   if (audioCtx) { try { audioCtx.close(); } catch (e) {} }
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-  // iOS unlock: play a silent 1-sample buffer synchronously within the gesture.
+  // iOS unlock: silent 1-sample buffer + explicit resume within the gesture.
   var unlock = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
   var unlockSrc = audioCtx.createBufferSource();
   unlockSrc.buffer = unlock;
   unlockSrc.connect(audioCtx.destination);
   unlockSrc.start(0);
+  await audioCtx.resume();
 
-  if (audioBuffers && audioBuffers.some(function(b) { return b !== null; })) {
-    // Pre-decoded by initRunner — start immediately.
-    // AudioBuffers are context-agnostic: same sample rate, works with new context.
-    trackOffsets = [0];
-    mountTrack(0);
-    playFromOffset(0, 0);
-    return;
-  }
-
-  // Demo path (no initRunner): decode now — tones are tiny, <100 ms.
+  // Decode track 0 first so playback starts with minimal delay, then decode
+  // the remaining tracks in the background while the class is running.
   audioBuffers = new Array(tracks.length).fill(null);
   document.getElementById('cue-text').textContent  = 'Preparing audio…';
   document.getElementById('cue-label').textContent = '';
   document.getElementById('cue-next-text').textContent = '';
 
-  Promise.all(tracks.map(function(track, i) {
-    if (!track.blobUrl) return Promise.resolve();
-    return fetch(track.blobUrl)
-      .then(function(r) { return r.arrayBuffer(); })
-      .then(function(ab) { return audioCtx.decodeAudioData(ab); })
-      .then(function(buf) { audioBuffers[i] = buf; })
-      .catch(function(e) { console.warn('Decode error', track.song, e); });
-  })).then(function() {
-    trackOffsets = [0];
-    mountTrack(0);
-    playFromOffset(0, 0);
-  });
+  if (tracks[0] && tracks[0].blobUrl) {
+    try {
+      var r0 = await fetch(tracks[0].blobUrl);
+      var ab0 = await r0.arrayBuffer();
+      audioBuffers[0] = await audioCtx.decodeAudioData(ab0);
+    } catch (e) { console.warn('Decode error track 0:', e); }
+  }
+
+  trackOffsets = [0];
+  mountTrack(0);
+  playFromOffset(0, 0);
+
+  // Decode remaining tracks in the background (they'll be ready before needed).
+  for (var i = 1; i < tracks.length; i++) {
+    (function(idx) {
+      if (!tracks[idx].blobUrl) return;
+      fetch(tracks[idx].blobUrl)
+        .then(function(r) { return r.arrayBuffer(); })
+        .then(function(ab) { return audioCtx.decodeAudioData(ab); })
+        .then(function(buf) { audioBuffers[idx] = buf; })
+        .catch(function(e) { console.warn('Decode error track ' + idx + ':', e); });
+    })(i);
+  }
 }
 
 // ─── Web Audio engine ─────────────────────────────────────────────────────────
@@ -467,10 +462,10 @@ function stopSources() {
 
 // Start playing from track `idx` at position `offset` seconds.
 // Schedules the following track at an exact sample boundary for gapless playback.
-function playFromOffset(idx, offset) {
+async function playFromOffset(idx, offset) {
   stopSources();
   // Ensure context is running (iOS may suspend it again after a pause)
-  if (audioCtx.state !== 'running') audioCtx.resume();
+  if (audioCtx.state !== 'running') await audioCtx.resume();
 
   // Skip tracks without a decoded buffer
   while (idx < tracks.length && !audioBuffers[idx]) {
