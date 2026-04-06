@@ -315,54 +315,64 @@ async function initRunner(folderPath) {
         setPrepStatus(ci, 'none');
       }
     }
-    var startBtn = document.getElementById('start-btn');
-    startBtn.disabled = false;
-    startBtn.textContent = 'Start Class ▶';
-    return;
-  }
-
-  // ── Download from Dropbox ───────────────────────────────────────────────────
-  var txt;
-  try {
-    txt = await dbxDownloadText(folderPath + '/class.txt');
-  } catch (e) {
-    document.getElementById('prep-track-list').innerHTML =
-      '<div class="empty-state error">Could not load class.txt<br>' + e.message + '</div>';
-    return;
-  }
-
-  tracks = parseTxt(txt, folderPath);
-  if (tracks.length === 0) {
-    document.getElementById('prep-track-list').innerHTML =
-      '<div class="empty-state error">No tracks found in class.txt</div>';
-    return;
-  }
-
-  renderPrepList();
-
-  for (var i = 0; i < tracks.length; i++) {
-    if (tracks[i].audioPath) {
-      setPrepStatus(i, 'loading');
-      try {
-        tracks[i].blobUrl = await dbxDownloadBlob(tracks[i].audioPath);
-        blobUrls.push(tracks[i].blobUrl);
-        setPrepStatus(i, 'ok');
-      } catch (e) {
-        setPrepStatus(i, 'error');
-        console.error('Preload failed:', tracks[i].song, e);
-      }
-    } else {
-      setPrepStatus(i, 'none');
+  } else {
+    // ── Download from Dropbox ─────────────────────────────────────────────────
+    var txt;
+    try {
+      txt = await dbxDownloadText(folderPath + '/class.txt');
+    } catch (e) {
+      document.getElementById('prep-track-list').innerHTML =
+        '<div class="empty-state error">Could not load class.txt<br>' + e.message + '</div>';
+      return;
     }
+
+    tracks = parseTxt(txt, folderPath);
+    if (tracks.length === 0) {
+      document.getElementById('prep-track-list').innerHTML =
+        '<div class="empty-state error">No tracks found in class.txt</div>';
+      return;
+    }
+
+    renderPrepList();
+
+    for (var i = 0; i < tracks.length; i++) {
+      if (tracks[i].audioPath) {
+        setPrepStatus(i, 'loading');
+        try {
+          tracks[i].blobUrl = await dbxDownloadBlob(tracks[i].audioPath);
+          blobUrls.push(tracks[i].blobUrl);
+          setPrepStatus(i, 'ok');
+        } catch (e) {
+          setPrepStatus(i, 'error');
+          console.error('Preload failed:', tracks[i].song, e);
+        }
+      } else {
+        setPrepStatus(i, 'none');
+      }
+    }
+
+    // Save class metadata to IDB (audio was already saved inside dbxDownloadBlob)
+    var trackMeta = tracks.map(function(t) {
+      return { song: t.song, artist: t.artist, type: t.type, bpm: t.bpm, ftp: t.ftp,
+               resistance: t.resistance, audioPath: t.audioPath, cues: t.cues, blobUrl: null };
+    });
+    idbPut('classes', { folderPath: folderPath, tracks: trackMeta })
+      .catch(function(e) { console.warn('IDB class save failed:', e); });
   }
 
-  // Save class metadata to IDB (audio was already saved inside dbxDownloadBlob)
-  var trackMeta = tracks.map(function(t) {
-    return { song: t.song, artist: t.artist, type: t.type, bpm: t.bpm, ftp: t.ftp,
-             resistance: t.resistance, audioPath: t.audioPath, cues: t.cues, blobUrl: null };
-  });
-  idbPut('classes', { folderPath: folderPath, tracks: trackMeta })
-    .catch(function(e) { console.warn('IDB class save failed:', e); });
+  // ── Pre-decode audio into AudioBuffers while user reads the track list ──────
+  // AudioContext created here (may be suspended on iOS — that's fine for decoding).
+  // startClass() will unlock and resume it within the user gesture.
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  audioBuffers = new Array(tracks.length).fill(null);
+  await Promise.all(tracks.map(function(track, idx) {
+    if (!track.blobUrl) return Promise.resolve();
+    return fetch(track.blobUrl)
+      .then(function(r) { return r.arrayBuffer(); })
+      .then(function(ab) { return audioCtx.decodeAudioData(ab); })
+      .then(function(buf) { audioBuffers[idx] = buf; })
+      .catch(function(e) { console.warn('Pre-decode failed:', track.song, e); });
+  }));
 
   var startBtn = document.getElementById('start-btn');
   startBtn.disabled = false;
@@ -406,30 +416,41 @@ function setPrepStatus(i, status) {
 function startClass() {
   showScreen('runner-screen');
 
-  // Create AudioContext within user gesture so autoplay is allowed
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  audioBuffers = new Array(tracks.length).fill(null);
+  // iOS Safari: play a silent buffer synchronously within the user gesture to
+  // unlock the AudioContext. Also works if context was created earlier (initRunner).
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  var unlock = audioCtx.createBuffer(1, 1, 22050);
+  var unlockSrc = audioCtx.createBufferSource();
+  unlockSrc.buffer = unlock;
+  unlockSrc.connect(audioCtx.destination);
+  unlockSrc.start(0);
+  audioCtx.resume();
 
+  if (audioBuffers && audioBuffers.some(function(b) { return b !== null; })) {
+    // Already decoded by initRunner — start immediately, no delay
+    trackOffsets = [0];
+    mountTrack(0);
+    playFromOffset(0, 0);
+    return;
+  }
+
+  // Demo path: decode now (tones are tiny, takes <100 ms)
+  audioBuffers = new Array(tracks.length).fill(null);
   document.getElementById('cue-text').textContent  = 'Preparing audio…';
   document.getElementById('cue-label').textContent = '';
   document.getElementById('cue-next-text').textContent = '';
 
-  // Decode all blob URLs into AudioBuffers
-  var decodePromises = tracks.map(function(track, i) {
+  Promise.all(tracks.map(function(track, i) {
     if (!track.blobUrl) return Promise.resolve();
     return fetch(track.blobUrl)
       .then(function(r) { return r.arrayBuffer(); })
       .then(function(ab) { return audioCtx.decodeAudioData(ab); })
       .then(function(buf) { audioBuffers[i] = buf; })
       .catch(function(e) { console.warn('Decode error', track.song, e); });
-  });
-
-  Promise.all(decodePromises).then(function() {
+  })).then(function() {
     trackOffsets = [0];
     mountTrack(0);
     playFromOffset(0, 0);
-  }).catch(function(e) {
-    document.getElementById('cue-text').textContent = 'Audio error: ' + e.message;
   });
 }
 
@@ -445,6 +466,8 @@ function stopSources() {
 // Schedules the following track at an exact sample boundary for gapless playback.
 function playFromOffset(idx, offset) {
   stopSources();
+  // Ensure context is running (iOS may suspend it again after a pause)
+  if (audioCtx.state !== 'running') audioCtx.resume();
 
   // Skip tracks without a decoded buffer
   while (idx < tracks.length && !audioBuffers[idx]) {
@@ -465,7 +488,7 @@ function playFromOffset(idx, offset) {
   isPlaying = true;
   currentTrackIdx = idx;
   pausedTrackOffset = 0;
-  document.getElementById('play-btn').textContent = '⏸';
+  document.getElementById('play-btn').textContent = 'PAUSE';
   requestWakeLock();
   startRaf();
   scheduleNextSource(idx);
@@ -674,7 +697,7 @@ function togglePlay() {
     pausedTrackOffset = audioCtx.currentTime - trackStartCtxTime;
     stopSources();
     isPlaying = false;
-    document.getElementById('play-btn').textContent = '▶';
+    document.getElementById('play-btn').textContent = 'PLAY';
     releaseWakeLock();
   } else {
     playFromOffset(currentTrackIdx, pausedTrackOffset);
@@ -731,7 +754,7 @@ function seekTrack(e) {
 function endOfClass() {
   isPlaying = false;
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-  document.getElementById('play-btn').textContent = '▶';
+  document.getElementById('play-btn').textContent = 'PLAY';
   document.getElementById('cue-label').textContent = 'Done';
   document.getElementById('cue-text').textContent  = 'Great work! Class complete.';
   document.getElementById('class-progress').style.width = '100%';
