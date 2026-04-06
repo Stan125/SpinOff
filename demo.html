@@ -75,9 +75,6 @@
       </div>
     </div>
 
-    <audio id="audio-a" preload="auto"></audio>
-    <audio id="audio-b" preload="auto"></audio>
-
     <div class="controls">
       <button class="ctrl-btn" onclick="prevTrack()">⏮</button>
       <button class="ctrl-btn primary" id="play-btn" onclick="togglePlay()">▶</button>
@@ -100,8 +97,8 @@
 // Override goHome so the back button stays on demo.html
 function goHome() {
   releaseWakeLock();
-  if (audioA) { audioA.pause(); audioA.src = ''; }
-  if (audioB) { audioB.pause(); audioB.src = ''; }
+  stopSources();
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
   blobUrls.forEach(function(u) { URL.revokeObjectURL(u); });
   window.location.href = 'demo.html';
 }
@@ -136,27 +133,27 @@ function makeTone(hz, seconds) {
 }
 
 var DEMO_TRACKS = [
-  { song: 'Easy Rider',    artist: 'SpinOff Demo', type: 'Warm-up',   bpm: '110', rpe: '3', resistance: 2, hz: 220, dur: 50,
+  { song: 'Easy Rider',    artist: 'SpinOff Demo', type: 'Warm-up',   bpm: '110', ftp: '55', resistance: 2, hz: 220, dur: 50,
     cues: [
       { at:  5, text: 'Find a comfortable cadence, loosen up the legs' },
       { at: 20, text: 'Start to feel the pedals — light resistance' },
       { at: 35, text: '**Add a touch of resistance** — almost ready to work' }
     ]},
-  { song: 'The Climb',     artist: 'SpinOff Demo', type: 'Climb',     bpm: '138', rpe: '8', resistance: 8, hz: 330, dur: 50,
+  { song: 'The Climb',     artist: 'SpinOff Demo', type: 'Climb',     bpm: '138', ftp: '90', resistance: 8, hz: 330, dur: 50,
     cues: [
       { at:  5, text: '**Dial up to resistance 8** — settle in' },
       { at: 18, text: 'Stay seated, drive from the hips. **Keep cadence above 80.**' },
       { at: 32, text: 'One more click of resistance — grind it out' },
       { at: 43, text: '**Empty the tank.** Final push!' }
     ]},
-  { song: 'Sandstorm',     artist: 'SpinOff Demo', type: 'Sprint',    bpm: '160', rpe: '9', resistance: 4, hz: 440, dur: 50,
+  { song: 'Sandstorm',     artist: 'SpinOff Demo', type: 'Sprint',    bpm: '160', ftp: '110', resistance: 4, hz: 440, dur: 50,
     cues: [
       { at:  5, text: '**Drop the resistance** — this is all speed. Sprint!' },
       { at: 16, text: 'Max effort — go go go!' },
       { at: 28, text: 'Recover on the breakdown. Breathe.' },
       { at: 38, text: '**Full gas again!** Last 12 seconds!' }
     ]},
-  { song: 'Float It Out',  artist: 'SpinOff Demo', type: 'Cool-down', bpm: '95',  rpe: '3', resistance: 2, hz: 165, dur: 50,
+  { song: 'Float It Out',  artist: 'SpinOff Demo', type: 'Cool-down', bpm: '95',  ftp: '55', resistance: 2, hz: 165, dur: 50,
     cues: [
       { at:  5, text: 'Bring it right down. Shake out the legs.' },
       { at: 20, text: 'Easy spin — let your heart rate drop naturally.' },
@@ -165,14 +162,10 @@ var DEMO_TRACKS = [
 ];
 
 window.addEventListener('load', function() {
-  audioA = document.getElementById('audio-a');
-  audioB = document.getElementById('audio-b');
-  audio  = audioA;
-
   showScreen('prep-screen');
 
   tracks = DEMO_TRACKS.map(function(d) {
-    return { song: d.song, artist: d.artist, type: d.type, bpm: d.bpm, rpe: d.rpe,
+    return { song: d.song, artist: d.artist, type: d.type, bpm: d.bpm, ftp: d.ftp,
              resistance: d.resistance, audioPath: null, cues: d.cues, blobUrl: null,
              _hz: d.hz, _dur: d.dur };
   });

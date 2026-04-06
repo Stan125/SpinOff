@@ -148,6 +148,20 @@ html, body {
 .class-card-sub  { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
 .class-card-arrow { color: var(--muted); font-size: 20px; }
 
+.offline-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #3a9e5f;
+  background: rgba(58,158,95,0.10);
+  border: 1px solid rgba(58,158,95,0.25);
+  padding: 2px 7px;
+  border-radius: 20px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
 .loading-state, .empty-state {
   text-align: center;
   color: var(--muted);
@@ -199,14 +213,30 @@ html, body {
 .song-artist { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
 .song-meta   { display: flex; gap: 8px; flex-wrap: wrap; }
 .meta-pill {
-  font-size: 11px;
+  font-size: 12px;
   font-family: var(--font-mono);
-  background: rgba(0,0,0,0.04);
-  border: 1px solid var(--border);
+  font-weight: 500;
+  background: rgba(0,0,0,0.06);
+  border: 1px solid rgba(0,0,0,0.15);
   padding: 3px 10px;
   border-radius: 20px;
-  color: var(--muted);
+  color: var(--text);
 }
+
+/* ── FTP power zones ─────────────────────────────────────────────────────────── */
+.zone-1 { background: rgba(230,230,230,0.9); border-color: rgba(0,0,0,0.12); color: #666; }
+.zone-2 { background: rgba(140,140,145,0.15); border-color: rgba(100,100,110,0.40); color: #555; }
+.zone-3 { background: rgba(30,100,210,0.12); border-color: rgba(30,100,210,0.40); color: #1a5cc2; }
+.zone-4 { background: rgba(34,150,70,0.12);  border-color: rgba(34,150,70,0.40);  color: #1e7d3a; }
+.zone-5 { background: rgba(210,150,0,0.14);  border-color: rgba(210,150,0,0.45);  color: #9a6d00; }
+.zone-6 { background: rgba(210,35,35,0.12);  border-color: rgba(210,35,35,0.40);  color: #b81a1a; }
+
+.song-card.zone-1::before { background: #c8c8c8; }
+.song-card.zone-2::before { background: #888892; }
+.song-card.zone-3::before { background: #1a5cc2; }
+.song-card.zone-4::before { background: #1e7d3a; }
+.song-card.zone-5::before { background: #c89600; }
+.song-card.zone-6::before { background: #b81a1a; }
 
 /* ── Intensity ────────────────────────────────────────────────────────────── */
 .intensity-row {
@@ -228,16 +258,16 @@ html, body {
   flex-shrink: 0;
 }
 .intensity-bars { display: flex; gap: 3px; align-items: flex-end; flex: 1; }
-.intensity-bar  { width: 7px; border-radius: 2px; background: rgba(0,0,0,0.08); }
+.intensity-bar  { width: 7px; border-radius: 2px; background: rgba(0,0,0,0.10); }
 .intensity-bar.on { background: var(--accent); }
-.intensity-val  { font-family: var(--font-mono); font-size: 13px; flex-shrink: 0; }
+.intensity-val  { font-family: var(--font-mono); font-size: 16px; font-weight: 600; color: var(--text); flex-shrink: 0; }
 
 /* ── Cue box ──────────────────────────────────────────────────────────────── */
 .cue-box {
   background: rgba(200,134,10,0.07);
   border: 1px solid rgba(200,134,10,0.22);
   border-radius: 12px;
-  padding: 14px 16px;
+  padding: 16px 18px;
   margin-bottom: 10px;
   transition: background 0.3s;
 }
@@ -245,19 +275,20 @@ html, body {
   background: rgba(200,134,10,0.18);
 }
 .cue-label {
-  font-family: var(--font-display);
-  font-size: 30px;
-  letter-spacing: 1px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0;
   color: var(--accent2);
-  line-height: 1;
+  line-height: 1.2;
   margin-bottom: 2px;
 }
 .cue-text {
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.5;
   color: var(--text);
 }
-.cue-text strong { color: var(--accent2); font-weight: 500; }
+.cue-text strong { color: var(--accent2); font-weight: 700; }
 
 .cue-now-label {
   font-family: var(--font-mono);
@@ -265,20 +296,21 @@ html, body {
   letter-spacing: 2px;
   text-transform: uppercase;
   color: var(--muted);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 .cue-sep {
   height: 1px;
   background: rgba(200,134,10,0.2);
-  margin: 10px 0 8px;
+  margin: 12px 0 10px;
 }
 .cue-next-text {
-  font-size: 13px;
-  color: var(--muted);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text);
   line-height: 1.5;
   margin-top: 3px;
 }
-.cue-next-text strong { color: var(--accent2); font-weight: 500; }
+.cue-next-text strong { color: var(--accent2); font-weight: 700; }
 
 .cue-dots { display: flex; gap: 5px; margin-top: 10px; flex-wrap: wrap; }
 .cue-dot  { width: 6px; height: 6px; border-radius: 50%; background: rgba(0,0,0,0.12); }
@@ -350,8 +382,9 @@ html, body {
 }
 .track-time {
   font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(26,26,28,0.65);
   flex-shrink: 0;
   min-width: 34px;
 }
