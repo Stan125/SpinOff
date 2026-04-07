@@ -699,9 +699,20 @@ function startRaf() {
     updateTrackProgress(t);
     checkCues(t);
     updateCueCountdown(t);
+    fillNextDuration();
     rafId = requestAnimationFrame(loop);
   }
   rafId = requestAnimationFrame(loop);
+}
+
+// Fill in next-song duration as soon as its buffer finishes decoding.
+// mountTrack() runs before background decode completes, so the first few frames
+// the value may be missing — this patches it in as soon as the buffer is ready.
+function fillNextDuration() {
+  var el = document.getElementById('next-duration');
+  if (!el || el.textContent) return;   // already populated
+  var buf = audioBuffers[currentTrackIdx + 1];
+  if (buf) el.textContent = formatTime(buf.duration);
 }
 
 // ─── Zone colors ──────────────────────────────────────────────────────────────
