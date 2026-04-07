@@ -705,14 +705,16 @@ function startRaf() {
   rafId = requestAnimationFrame(loop);
 }
 
-// Fill in next-song duration as soon as its buffer finishes decoding.
-// mountTrack() runs before background decode completes, so the first few frames
-// the value may be missing — this patches it in as soon as the buffer is ready.
+// Keep next-duration and song-countdown in sync every frame.
+// mountTrack() may run before background decode finishes, leaving these empty;
+// the RAF loop fills them in as soon as each buffer is available.
 function fillNextDuration() {
   var el = document.getElementById('next-duration');
-  if (!el || el.textContent) return;   // already populated
-  var buf = audioBuffers[currentTrackIdx + 1];
-  if (buf) el.textContent = formatTime(buf.duration);
+  if (el) {
+    var buf = audioBuffers[currentTrackIdx + 1];
+    var val = buf ? formatTime(buf.duration) : '';
+    if (el.textContent !== val) el.textContent = val;
+  }
 }
 
 // ─── Zone colors ──────────────────────────────────────────────────────────────
@@ -802,6 +804,7 @@ function mountTrack(idx) {
     }
   }
 
+  document.getElementById('song-countdown').textContent = '—';
   renderCueDots(track.cues, -1);
 
   document.getElementById('cue-text').textContent = 'Get ready…';
@@ -951,6 +954,7 @@ function updateTrackProgress(t) {
   var remaining = Math.max(0, dur - cur);
   document.getElementById('track-current').textContent   = formatTime(cur);
   document.getElementById('track-remaining').textContent = '-' + formatTime(remaining);
+  document.getElementById('song-countdown').textContent  = '-' + formatTime(remaining);
   document.getElementById('track-fill').style.width = (dur > 0 ? (cur / dur * 100) : 0) + '%';
   document.getElementById('class-elapsed').textContent =
     formatTime((trackOffsets[currentTrackIdx] || 0) + cur);

@@ -216,6 +216,18 @@ html, body {
   margin-bottom: 10px;
   position: relative;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.song-card-left { flex: 1; min-width: 0; }
+.song-countdown {
+  font-family: var(--font-display);
+  font-size: 48px;
+  letter-spacing: 1px;
+  color: rgba(26,26,28,0.55);
+  flex-shrink: 0;
+  line-height: 1;
 }
 .song-zone-strip {
   position: absolute;
