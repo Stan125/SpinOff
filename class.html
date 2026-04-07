@@ -62,13 +62,16 @@
     </div>
 
     <div class="cue-box" id="cue-box">
-      <div class="cue-now-label">Now</div>
-      <div class="cue-text" id="cue-text">Get ready…</div>
-      <div class="cue-sep"></div>
-      <div class="cue-label" id="cue-label">Next cue in</div>
-      <div class="cue-next-text" id="cue-next-text">—</div>
-      <div class="cue-dots" id="cue-dots"></div>
-      <button class="cue-list-btn" onclick="showCueList()">All remaining cues ›</button>
+      <div class="cue-left">
+        <div class="cue-now-label">Now</div>
+        <div class="cue-text" id="cue-text">Get ready…</div>
+        <div class="cue-sep"></div>
+        <div class="cue-label" id="cue-label">Next cue</div>
+        <div class="cue-next-text" id="cue-next-text">—</div>
+        <div class="cue-dots" id="cue-dots"></div>
+        <button class="cue-list-btn" onclick="showCueList()">All remaining cues ›</button>
+      </div>
+      <div class="cue-countdown" id="cue-countdown">—</div>
     </div>
 
     <div id="cue-list-modal" class="cue-list-modal hidden" onclick="hideCueList()">

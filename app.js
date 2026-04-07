@@ -809,10 +809,12 @@ function mountTrack(idx) {
 
   document.getElementById('cue-text').textContent = 'Get ready…';
   if (track.cues.length) {
-    document.getElementById('cue-label').textContent   = 'Next cue in ' + formatTime(track.cues[0].at);
-    document.getElementById('cue-next-text').innerHTML = renderMarkdown(track.cues[0].text);
+    document.getElementById('cue-label').textContent    = 'Next cue';
+    document.getElementById('cue-countdown').textContent = formatTime(track.cues[0].at);
+    document.getElementById('cue-next-text').innerHTML  = renderMarkdown(track.cues[0].text);
   } else {
-    document.getElementById('cue-label').textContent    = '—';
+    document.getElementById('cue-label').textContent     = '—';
+    document.getElementById('cue-countdown').textContent = '—';
     document.getElementById('cue-next-text').textContent = '—';
   }
 
@@ -875,22 +877,33 @@ function checkCues(t) {
 
 function updateCueCountdown(t) {
   var track = tracks[currentTrackIdx];
-  if (!track || !track.cues.length) return;
-
-  if (currentCueIdx === -1) {
-    document.getElementById('cue-label').textContent =
-      'Next cue in ' + formatTime(Math.max(0, track.cues[0].at - t));
+  var cdEl  = document.getElementById('cue-countdown');
+  var lblEl = document.getElementById('cue-label');
+  if (!track || !track.cues.length) {
+    if (cdEl)  cdEl.textContent  = '—';
+    if (lblEl) lblEl.textContent = '—';
     return;
   }
-  var nextIdx = currentCueIdx + 1;
-  if (nextIdx < track.cues.length) {
-    document.getElementById('cue-label').textContent =
-      'Next cue in ' + formatTime(Math.max(0, track.cues[nextIdx].at - t));
+
+  var nextAt;
+  if (currentCueIdx === -1) {
+    nextAt = track.cues[0].at;
   } else {
-    var nextTrk = tracks[currentTrackIdx + 1];
-    document.getElementById('cue-label').textContent =
-      nextTrk ? 'Up next: ' + nextTrk.song : 'Last cue';
+    var nextIdx = currentCueIdx + 1;
+    if (nextIdx < track.cues.length) {
+      nextAt = track.cues[nextIdx].at;
+    } else {
+      // Past the last cue — show next track name instead of a timer
+      var nextTrk = tracks[currentTrackIdx + 1];
+      if (cdEl)  cdEl.textContent  = '—';
+      if (lblEl) lblEl.textContent = nextTrk ? 'Up next: ' + nextTrk.song : 'Last cue';
+      return;
+    }
   }
+
+  var secs = Math.max(0, nextAt - t);
+  if (cdEl)  cdEl.textContent  = formatTime(secs);
+  if (lblEl) lblEl.textContent = 'Next cue';
 }
 
 function renderMarkdown(text) {

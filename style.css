@@ -286,9 +286,22 @@ html, body {
   padding: 16px 18px;
   margin-bottom: 10px;
   transition: background 0.3s;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
 }
 .cue-box.cue-flash {
   background: rgba(200,134,10,0.18);
+}
+.cue-left { flex: 1; min-width: 0; }
+.cue-countdown {
+  font-family: var(--font-display);
+  font-size: 48px;
+  letter-spacing: 1px;
+  color: var(--accent2);
+  flex-shrink: 0;
+  line-height: 1;
+  padding-top: 2px;
 }
 .cue-label {
   font-size: 15px;
