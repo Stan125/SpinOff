@@ -707,8 +707,48 @@ function startRaf() {
 // ─── Zone colors ──────────────────────────────────────────────────────────────
 var ZONE_HEX = ['', '#c8c8c8', '#888892', '#1a5cc2', '#1e7d3a', '#c89600', '#b81a1a'];
 
+// Semi-transparent backgrounds/borders for card coloring
+var ZONE_CARD_BG = [
+  '',
+  'rgba(180,180,180,0.22)',
+  'rgba(100,100,110,0.18)',
+  'rgba(26,92,194,0.13)',
+  'rgba(30,125,58,0.13)',
+  'rgba(200,134,10,0.16)',
+  'rgba(184,26,26,0.13)'
+];
+var ZONE_CARD_BORDER = [
+  '',
+  'rgba(180,180,180,0.45)',
+  'rgba(100,100,110,0.38)',
+  'rgba(26,92,194,0.38)',
+  'rgba(30,125,58,0.38)',
+  'rgba(200,134,10,0.42)',
+  'rgba(184,26,26,0.38)'
+];
+
 function zoneColorHex(ftpPct) {
   return ZONE_HEX[ftpZone(ftpPct)] || '#c8c8c8';
+}
+
+// Returns { bg, border } for a next-card given an array of FTP values
+function nextCardStyle(ftps) {
+  if (!ftps || ftps.length === 0) return { bg: '', border: '' };
+  if (ftps.length === 1) {
+    var z = ftpZone(ftps[0]);
+    return { bg: ZONE_CARD_BG[z], border: ZONE_CARD_BORDER[z] };
+  }
+  // Horizontal stripes, one per zone
+  var stops = ftps.map(function(f, i) {
+    var bg = ZONE_CARD_BG[ftpZone(f)];
+    var p0 = (i / ftps.length * 100).toFixed(1) + '%';
+    var p1 = ((i + 1) / ftps.length * 100).toFixed(1) + '%';
+    return bg + ' ' + p0 + ' ' + p1;
+  }).join(', ');
+  return {
+    bg: 'linear-gradient(to right, ' + stops + ')',
+    border: ZONE_CARD_BORDER[ftpZone(ftps[0])]
+  };
 }
 
 // ─── Mount track (UI only) ────────────────────────────────────────────────────
@@ -763,15 +803,27 @@ function mountTrack(idx) {
   }
 
   var next = tracks[idx + 1];
+  var nextCardEl = document.getElementById('next-card');
   document.getElementById('next-song').textContent = next ? next.song + ' — ' + next.artist : 'End of class';
-  var nextMeta = [];
+
   if (next) {
-    if (next.type) nextMeta.push(next.type);
     var nextFtps = next.ftps && next.ftps.length ? next.ftps : (next.ftp ? [parseInt(next.ftp)] : []);
+    var nextMeta = [];
+    if (next.type) nextMeta.push(next.type);
     if (nextFtps.length) nextMeta.push(nextFtps.map(function(f) { return f + '%'; }).join('/') + ' FTP');
-    if (audioBuffers[idx + 1]) nextMeta.push(formatTime(audioBuffers[idx + 1].duration));
+    document.getElementById('next-type').textContent = nextMeta.join(' · ');
+    document.getElementById('next-duration').textContent =
+      audioBuffers[idx + 1] ? formatTime(audioBuffers[idx + 1].duration) : '';
+    if (nextCardEl) {
+      var ns = nextCardStyle(nextFtps);
+      nextCardEl.style.background  = ns.bg;
+      nextCardEl.style.borderColor = ns.border;
+    }
+  } else {
+    document.getElementById('next-type').textContent    = '';
+    document.getElementById('next-duration').textContent = '';
+    if (nextCardEl) { nextCardEl.style.background = ''; nextCardEl.style.borderColor = ''; }
   }
-  document.getElementById('next-type').textContent = next ? nextMeta.join(' · ') : '';
 
   updateClassProgress();
   updateClassOverview(idx);
@@ -839,6 +891,45 @@ function renderCueDots(cues, activeIdx) {
     dot.className = 'cue-dot' + (i === activeIdx ? ' active' : i < activeIdx ? ' done' : '');
     container.appendChild(dot);
   });
+}
+
+// ─── Remaining-cues modal ────────────────────────────────────────────────────
+function showCueList() {
+  var body = document.getElementById('cue-list-body');
+  body.innerHTML = '';
+
+  for (var i = currentTrackIdx; i < tracks.length; i++) {
+    var track = tracks[i];
+    var firstCue = (i === currentTrackIdx) ? currentCueIdx + 1 : 0;
+
+    var header = document.createElement('div');
+    header.className = 'cue-list-track-header' + (i === currentTrackIdx ? ' current' : '');
+    header.textContent = 'Track ' + (i + 1) + ' — ' + track.song;
+    body.appendChild(header);
+
+    var remaining = track.cues.slice(firstCue);
+    if (remaining.length === 0) {
+      var none = document.createElement('div');
+      none.className = 'cue-list-none';
+      none.textContent = i === currentTrackIdx ? 'No more cues this track' : 'No cues';
+      body.appendChild(none);
+    } else {
+      remaining.forEach(function(cue) {
+        var row = document.createElement('div');
+        row.className = 'cue-list-row';
+        row.innerHTML =
+          '<span class="cue-list-time">' + formatTime(cue.at) + '</span>' +
+          '<span class="cue-list-text">' + renderMarkdown(cue.text) + '</span>';
+        body.appendChild(row);
+      });
+    }
+  }
+
+  document.getElementById('cue-list-modal').classList.remove('hidden');
+}
+
+function hideCueList() {
+  document.getElementById('cue-list-modal').classList.add('hidden');
 }
 
 // ─── Progress display ─────────────────────────────────────────────────────────

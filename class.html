@@ -65,14 +65,26 @@
       <div class="cue-label" id="cue-label">Next cue in</div>
       <div class="cue-next-text" id="cue-next-text">—</div>
       <div class="cue-dots" id="cue-dots"></div>
+      <button class="cue-list-btn" onclick="showCueList()">All remaining cues ›</button>
     </div>
 
-    <div class="next-card">
-      <span class="next-label">Up next</span>
-      <div class="next-info">
+    <div id="cue-list-modal" class="cue-list-modal hidden" onclick="hideCueList()">
+      <div class="cue-list-sheet" onclick="event.stopPropagation()">
+        <div class="cue-list-header">
+          <span>Remaining Cues</span>
+          <button class="cue-list-close" onclick="hideCueList()">✕</button>
+        </div>
+        <div id="cue-list-body" class="cue-list-body"></div>
+      </div>
+    </div>
+
+    <div class="next-card" id="next-card">
+      <div class="next-left">
+        <span class="next-label">Up next</span>
         <div class="next-song" id="next-song">—</div>
         <div class="next-type" id="next-type">—</div>
       </div>
+      <div class="next-duration" id="next-duration"></div>
     </div>
 
     <div class="controls">

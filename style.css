@@ -324,28 +324,141 @@ html, body {
 .cue-dot.active { background: var(--accent2); }
 .cue-dot.done   { background: rgba(200,134,10,0.35); }
 
+/* ── Cue list button & modal ─────────────────────────────────────────────── */
+.cue-list-btn {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  background: none;
+  border: none;
+  color: var(--accent2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-align: right;
+  cursor: pointer;
+  padding: 2px 0 0;
+  opacity: 0.75;
+  -webkit-tap-highlight-color: transparent;
+}
+.cue-list-btn:hover { opacity: 1; }
+
+.cue-list-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+.cue-list-modal.hidden { display: none !important; }
+
+.cue-list-sheet {
+  background: var(--bg);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-height: 78vh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.cue-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.cue-list-close {
+  background: rgba(0,0,0,0.06);
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.cue-list-body {
+  overflow-y: auto;
+  padding: 12px 0 20px;
+  -webkit-overflow-scrolling: touch;
+}
+.cue-list-track-header {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 12px 20px 6px;
+}
+.cue-list-track-header.current {
+  color: var(--accent);
+}
+.cue-list-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 20px;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+.cue-list-row:last-child { border-bottom: none; }
+.cue-list-time {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  flex-shrink: 0;
+  min-width: 34px;
+}
+.cue-list-text {
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--text);
+}
+.cue-list-text strong { color: var(--accent2); font-weight: 700; }
+.cue-list-none {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  padding: 6px 20px 6px 32px;
+}
+
 /* ── Next card ────────────────────────────────────────────────────────────── */
 .next-card {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   background: rgba(0,0,0,0.02);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 11px 14px;
+  border-radius: 14px;
+  padding: 14px 16px;
   margin-bottom: 16px;
+  transition: background 0.3s, border-color 0.3s;
 }
+.next-left  { flex: 1; min-width: 0; }
 .next-label {
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 2px;
   text-transform: uppercase;
   color: var(--muted);
-  flex-shrink: 0;
+  display: block;
+  margin-bottom: 3px;
 }
-.next-info  { flex: 1; min-width: 0; }
-.next-song  { font-size: 16px; font-weight: 500; color: rgba(26,26,28,0.65); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.next-type  { font-size: 13px; font-family: var(--font-mono); color: rgba(26,26,28,0.35); margin-top: 2px; }
+.next-song     { font-family: var(--font-display); font-size: 28px; letter-spacing: 0.5px; line-height: 1.05; color: rgba(26,26,28,0.75); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.next-type     { font-size: 13px; font-family: var(--font-mono); color: rgba(26,26,28,0.40); margin-top: 3px; }
+.next-duration { font-family: var(--font-display); font-size: 42px; letter-spacing: 1px; color: rgba(26,26,28,0.55); flex-shrink: 0; line-height: 1; }
 
 /* ── Playback controls ────────────────────────────────────────────────────── */
 .controls {

@@ -8,7 +8,9 @@
 #
 # Type options : Warm-up  Endurance  Tempo  Climb  Sprint  Cool-down
 # %FTP zones   : <55 white  55-75 grey  75-90 blue  90-105 green  105-120 yellow  120+ red
-# Resistance   : 1–10
+# %FTP multi   : separate with / for songs that span two zones  e.g. 85/110
+#                the song card and "up next" panel will show coloured stripes
+# Resistance   : 1–10  (informational only — not shown in the UI)
 # Cues         : M:SS text    use **bold** for emphasis
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -22,10 +24,11 @@
 0:00 Settle in at tempo pace. Cadence 85–95 rpm.
 1:30 Halfway — hold the effort. **Don't let the cadence drop.**
 
-## Song Title | Artist | Climb | 125 BPM | 95 | 9 | track03.mp3
+## Song Title | Artist | Climb | 125 BPM | 85/105 | 9 | track03.mp3
 
 0:00 **Dial up.** Seated climb — drive from the hips.
-2:00 Final push — **empty the tank.**
+2:00 Building into threshold now — **push harder.**
+3:30 Final push — **empty the tank.**
 
 ## Song Title | Artist | Sprint | 160 BPM | 115 | 4 | track04.mp3
 

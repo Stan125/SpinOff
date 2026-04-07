@@ -74,8 +74,9 @@ echo "Found ${#FILES[@]} audio file(s) in $FOLDER"
 {
   echo "# SpinOff class — generated $(date '+%Y-%m-%d') from: $(basename "$FOLDER")"
   echo "# Edit: Type, %FTP, Resistance, and cues. Titles/artists/BPM read from tags."
-  echo "# %FTP zones: <55 white  55-75 grey  75-90 blue  90-105 green  105-120 yellow  120+ red"
-  echo "# Cues: M:SS text   use **bold** for emphasis"
+  echo "# %FTP zones : <55 white  55-75 grey  75-90 blue  90-105 green  105-120 yellow  120+ red"
+  echo "# %FTP multi : use / to span two zones e.g. 85/110  — shows coloured stripes in the app"
+  echo "# Cues       : M:SS text   use **bold** for emphasis"
   echo ""
 
   IDX=0
@@ -111,6 +112,7 @@ echo "Found ${#FILES[@]} audio file(s) in $FOLDER"
     fi
 
     echo "## $TITLE | $ARTIST | $TYPE | $BPM BPM | 80 | 5 | $FILENAME"
+    # ^^ Set %FTP (field 5). Use a single value e.g. 95, or two zones e.g. 85/110
     echo ""
     echo "0:00 "
     echo ""
