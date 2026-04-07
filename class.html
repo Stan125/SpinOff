@@ -42,7 +42,10 @@
 
     <div class="progress-bar"><div class="progress-fill" id="class-progress"></div></div>
 
+    <div id="class-overview" class="class-overview"></div>
+
     <div class="song-card" id="song-card">
+      <div id="song-zone-strip" class="song-zone-strip"></div>
       <div class="song-label">
         <span id="track-label">Track 1</span>
         <span id="track-type-tag" class="type-tag">—</span>
@@ -52,14 +55,7 @@
       <div class="song-meta">
         <span class="meta-pill" id="meta-bpm">—</span>
         <span class="meta-pill" id="meta-rpe">—</span>
-        <span class="meta-pill" id="meta-res">—</span>
       </div>
-    </div>
-
-    <div class="intensity-row">
-      <span class="intensity-label">Resistance</span>
-      <div class="intensity-bars" id="intensity-bars"></div>
-      <span class="intensity-val" id="intensity-val">—</span>
     </div>
 
     <div class="cue-box" id="cue-box">
@@ -90,7 +86,7 @@
       <div class="track-progress-bar" id="track-bar" onclick="seekTrack(event)">
         <div class="track-progress-fill" id="track-fill"></div>
       </div>
-      <span class="track-time" id="track-duration">0:00</span>
+      <span class="track-time" id="track-remaining">-0:00</span>
     </div>
 
   </div>

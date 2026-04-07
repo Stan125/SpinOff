@@ -85,12 +85,13 @@ html, body {
 }
 .class-elapsed {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 18px;
   color: var(--accent);
   background: rgba(224,90,43,0.12);
   border: 1px solid rgba(224,90,43,0.25);
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: 20px;
+  font-weight: 500;
 }
 
 /* ── Progress bars ────────────────────────────────────────────────────────── */
@@ -147,6 +148,19 @@ html, body {
 .class-card-name { font-size: 17px; font-weight: 500; flex: 1; }
 .class-card-sub  { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
 .class-card-arrow { color: var(--muted); font-size: 20px; }
+.class-delete-btn {
+  background: none;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  padding: 4px 9px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.class-delete-btn:hover { background: rgba(224,90,43,0.08); color: var(--accent); border-color: rgba(224,90,43,0.3); }
 
 .offline-badge {
   font-family: var(--font-mono);
@@ -171,23 +185,44 @@ html, body {
 }
 .empty-state.error { color: #e05a2b; }
 
+/* ── Class intensity overview ─────────────────────────────────────────────── */
+.class-overview {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 60px;
+  margin-bottom: 10px;
+  padding: 0 2px;
+}
+.overview-col {
+  flex: 1;
+  border-radius: 3px 3px 0 0;
+  opacity: 0.45;
+  min-height: 16px;
+  transition: opacity 0.3s;
+}
+.overview-col.overview-active {
+  opacity: 1;
+  outline: 2px solid rgba(0,0,0,0.35);
+  outline-offset: 0px;
+}
+
 /* ── Song card ────────────────────────────────────────────────────────────── */
 .song-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 16px;
-  padding: 16px;
+  padding: 14px 14px 14px 22px;
   margin-bottom: 10px;
   position: relative;
   overflow: hidden;
 }
-.song-card::before {
-  content: '';
+.song-zone-strip {
   position: absolute;
   left: 0; top: 0; bottom: 0;
-  width: 3px;
+  width: 8px;
+  border-radius: 8px 0 0 8px;
   background: var(--accent);
-  border-radius: 3px 0 0 3px;
 }
 .song-label {
   display: flex;
@@ -209,58 +244,27 @@ html, body {
   border-radius: 20px;
   letter-spacing: 1px;
 }
-.song-name   { font-family: var(--font-display); font-size: 28px; letter-spacing: 0.5px; line-height: 1.1; margin-bottom: 2px; }
-.song-artist { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+.song-name   { font-family: var(--font-display); font-size: 38px; letter-spacing: 0.5px; line-height: 1.05; margin-bottom: 2px; }
+.song-artist { font-size: 14px; color: var(--muted); margin-bottom: 10px; }
 .song-meta   { display: flex; gap: 8px; flex-wrap: wrap; }
 .meta-pill {
-  font-size: 12px;
+  font-size: 14px;
   font-family: var(--font-mono);
   font-weight: 500;
   background: rgba(0,0,0,0.06);
   border: 1px solid rgba(0,0,0,0.15);
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: 20px;
   color: var(--text);
 }
 
-/* ── FTP power zones ─────────────────────────────────────────────────────────── */
+/* ── FTP power zones (meta pills) ──────────────────────────────────────────── */
 .zone-1 { background: rgba(230,230,230,0.9); border-color: rgba(0,0,0,0.12); color: #666; }
 .zone-2 { background: rgba(140,140,145,0.15); border-color: rgba(100,100,110,0.40); color: #555; }
 .zone-3 { background: rgba(30,100,210,0.12); border-color: rgba(30,100,210,0.40); color: #1a5cc2; }
 .zone-4 { background: rgba(34,150,70,0.12);  border-color: rgba(34,150,70,0.40);  color: #1e7d3a; }
 .zone-5 { background: rgba(210,150,0,0.14);  border-color: rgba(210,150,0,0.45);  color: #9a6d00; }
 .zone-6 { background: rgba(210,35,35,0.12);  border-color: rgba(210,35,35,0.40);  color: #b81a1a; }
-
-.song-card.zone-1::before { background: #c8c8c8; }
-.song-card.zone-2::before { background: #888892; }
-.song-card.zone-3::before { background: #1a5cc2; }
-.song-card.zone-4::before { background: #1e7d3a; }
-.song-card.zone-5::before { background: #c89600; }
-.song-card.zone-6::before { background: #b81a1a; }
-
-/* ── Intensity ────────────────────────────────────────────────────────────── */
-.intensity-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  margin-bottom: 10px;
-}
-.intensity-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--muted);
-  flex-shrink: 0;
-}
-.intensity-bars { display: flex; gap: 3px; align-items: flex-end; flex: 1; }
-.intensity-bar  { width: 7px; border-radius: 2px; background: rgba(0,0,0,0.10); }
-.intensity-bar.on { background: var(--accent); }
-.intensity-val  { font-family: var(--font-mono); font-size: 16px; font-weight: 600; color: var(--text); flex-shrink: 0; }
 
 /* ── Cue box ──────────────────────────────────────────────────────────────── */
 .cue-box {
@@ -275,17 +279,20 @@ html, body {
   background: rgba(200,134,10,0.18);
 }
 .cue-label {
-  font-size: 20px;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: 0;
   color: var(--accent2);
   line-height: 1.2;
-  margin-bottom: 2px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  letter-spacing: 1px;
 }
 .cue-text {
-  font-size: 20px;
+  font-size: 28px;
   font-weight: 500;
-  line-height: 1.5;
+  line-height: 1.35;
   color: var(--text);
 }
 .cue-text strong { color: var(--accent2); font-weight: 700; }
@@ -304,10 +311,10 @@ html, body {
   margin: 12px 0 10px;
 }
 .cue-next-text {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 500;
   color: var(--text);
-  line-height: 1.5;
+  line-height: 1.35;
   margin-top: 3px;
 }
 .cue-next-text strong { color: var(--accent2); font-weight: 700; }
@@ -337,8 +344,8 @@ html, body {
   flex-shrink: 0;
 }
 .next-info  { flex: 1; min-width: 0; }
-.next-song  { font-size: 14px; font-weight: 500; color: rgba(26,26,28,0.65); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.next-type  { font-size: 11px; font-family: var(--font-mono); color: rgba(26,26,28,0.35); margin-top: 1px; }
+.next-song  { font-size: 16px; font-weight: 500; color: rgba(26,26,28,0.65); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.next-type  { font-size: 13px; font-family: var(--font-mono); color: rgba(26,26,28,0.35); margin-top: 2px; }
 
 /* ── Playback controls ────────────────────────────────────────────────────── */
 .controls {
@@ -384,11 +391,11 @@ html, body {
 }
 .track-time {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 500;
   color: rgba(26,26,28,0.65);
   flex-shrink: 0;
-  min-width: 34px;
+  min-width: 42px;
 }
 .track-progress-bar {
   flex: 1;

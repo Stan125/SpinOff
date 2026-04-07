@@ -169,6 +169,23 @@ async function clearClassCache() {
   window.location.reload();
 }
 
+async function deleteClassCache(folderPath, cardEl) {
+  var cached = await idbGet('classes', folderPath).catch(function() { return null; });
+  if (cached && cached.tracks) {
+    await Promise.all(cached.tracks.map(function(t) {
+      if (!t.audioPath) return Promise.resolve();
+      return idbDelete('audio', t.audioPath).catch(function() {});
+    }));
+  }
+  await idbDelete('classes', folderPath).catch(function() {});
+  if (cardEl) {
+    var badge = cardEl.querySelector('.offline-badge');
+    if (badge) badge.remove();
+    var delBtn = cardEl.querySelector('.class-delete-btn');
+    if (delBtn) delBtn.remove();
+  }
+}
+
 function goHome() {
   releaseWakeLock();
   stopSources();
@@ -202,11 +219,26 @@ async function loadClasses() {
       var card = document.createElement('div');
       card.className = 'class-card';
       card.innerHTML =
-        '<div class="class-card-name">' + formatFolderName(folder.name) +
-          (isOffline ? '<span class="offline-badge">✓ offline</span>' : '') + '</div>' +
-        '<div class="class-card-sub">' + folder.name + '</div>' +
+        '<div class="class-card-info" style="flex:1;min-width:0">' +
+          '<div class="class-card-name">' + formatFolderName(folder.name) +
+            (isOffline ? '<span class="offline-badge">✓ offline</span>' : '') + '</div>' +
+          '<div class="class-card-sub">' + folder.name + '</div>' +
+        '</div>' +
         '<div class="class-card-arrow">›</div>';
+      card.style.display = 'flex';
+      card.style.alignItems = 'center';
       card.addEventListener('click', function() { openClass(folder.path_lower); });
+      if (isOffline) {
+        var delBtn = document.createElement('button');
+        delBtn.className = 'class-delete-btn';
+        delBtn.textContent = '✕';
+        delBtn.title = 'Delete local cache';
+        delBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          deleteClassCache(folder.path_lower, card);
+        });
+        card.insertBefore(delBtn, card.querySelector('.class-card-arrow'));
+      }
       list.appendChild(card);
     });
   } catch (e) {
@@ -220,12 +252,25 @@ async function loadClasses() {
       var name = folderPath.split('/').pop();
       var card = document.createElement('div');
       card.className = 'class-card';
+      card.style.display = 'flex';
+      card.style.alignItems = 'center';
       card.innerHTML =
-        '<div class="class-card-name">' + formatFolderName(name) +
-          '<span class="offline-badge">✓ offline</span></div>' +
-        '<div class="class-card-sub">' + name + '</div>' +
+        '<div class="class-card-info" style="flex:1;min-width:0">' +
+          '<div class="class-card-name">' + formatFolderName(name) +
+            '<span class="offline-badge">✓ offline</span></div>' +
+          '<div class="class-card-sub">' + name + '</div>' +
+        '</div>' +
         '<div class="class-card-arrow">›</div>';
       card.addEventListener('click', function() { openClass(folderPath); });
+      var delBtn = document.createElement('button');
+      delBtn.className = 'class-delete-btn';
+      delBtn.textContent = '✕';
+      delBtn.title = 'Delete local cache';
+      delBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        deleteClassCache(folderPath, card);
+      });
+      card.insertBefore(delBtn, card.querySelector('.class-card-arrow'));
       list.appendChild(card);
     });
   }
@@ -256,7 +301,9 @@ function parseTxt(txt, folderPath) {
     var artist     = parts[1] || '';
     var type       = parts[2] || '';
     var bpm        = (parts[3] || '').replace(/bpm\s*/i, '').trim();
-    var ftp        = ((parts[4] || '').match(/\d+/) || [''])[0];
+    var ftpStr     = (parts[4] || '').replace(/ftp\s*/i, '').trim();
+    var ftps       = ftpStr ? ftpStr.split(/[\/,]/).map(function(s) { return parseInt(s.trim()) || 0; }).filter(Boolean) : [];
+    var ftp        = ftps.length > 0 ? String(ftps[0]) : '';
     var resistance = parseInt((parts[5] || '0').replace(/r/i, '')) || 0;
     var filename   = parts[6] || '';
     var audioPath  = filename ? folderPath + '/' + filename : null;
@@ -270,7 +317,7 @@ function parseTxt(txt, folderPath) {
       }
     }
 
-    tracks.push({ song: song, artist: artist, type: type, bpm: bpm, ftp: ftp,
+    tracks.push({ song: song, artist: artist, type: type, bpm: bpm, ftp: ftp, ftps: ftps,
                   resistance: resistance, audioPath: audioPath, cues: cues, blobUrl: null });
   });
   return tracks;
@@ -380,7 +427,7 @@ async function initRunner(folderPath) {
 
     // Save class metadata to IDB (audio was already saved inside dbxDownloadBlob)
     var trackMeta = tracks.map(function(t) {
-      return { song: t.song, artist: t.artist, type: t.type, bpm: t.bpm, ftp: t.ftp,
+      return { song: t.song, artist: t.artist, type: t.type, bpm: t.bpm, ftp: t.ftp, ftps: t.ftps || [],
                resistance: t.resistance, audioPath: t.audioPath, cues: t.cues, blobUrl: null };
     });
     idbPut('classes', { folderPath: folderPath, tracks: trackMeta })
@@ -390,6 +437,8 @@ async function initRunner(folderPath) {
   // Audio is decoded in startClass() after the AudioContext is unlocked by a
   // user gesture. Decoding here (on a suspended context) is unreliable on iOS.
   audioBuffers = new Array(tracks.length).fill(null);
+
+  renderClassOverview();
 
   var startBtn = document.getElementById('start-btn');
   startBtn.disabled = false;
@@ -429,6 +478,26 @@ function setPrepStatus(i, status) {
   el.className = 'prep-status prep-status-' + status;
 }
 
+// ─── iOS silent-switch bypass ──────────────────────────────────────────────────
+// Playing through an <audio> element promotes the iOS audio session from the
+// default "ambient" category (muted by the ringer/silent switch) to "playback"
+// (ignores the switch), so Web Audio output is also unaffected.
+function createSilentWavBlob(sampleRate) {
+  var numSamples = sampleRate; // 1 second
+  var dataSize   = numSamples * 2;
+  var buf  = new ArrayBuffer(44 + dataSize);
+  var view = new DataView(buf);
+  function str(off, s) { for (var i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); }
+  str(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true);
+  str(8, 'WAVE');
+  str(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  str(36, 'data'); view.setUint32(40, dataSize, true);
+  // samples remain 0 (silence)
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
 // decodeAudioData wrapper using callbacks — works on all iOS Safari versions.
 // The Promise-returning form of decodeAudioData is only guaranteed from iOS 14.1+;
 // on older versions it returns undefined, so awaiting it gives undefined (not a buffer).
@@ -457,6 +526,18 @@ async function startClass() {
   unlockSrc.connect(audioCtx.destination);
   unlockSrc.start(0);
   await audioCtx.resume();
+
+  // iOS silent-switch bypass: play silent WAV through an <audio> element within
+  // the same user gesture to promote the session to "playback" category so that
+  // Web Audio is not muted by the physical ringer/silent switch.
+  try {
+    var silentBlob = createSilentWavBlob(audioCtx.sampleRate);
+    var silentUrl  = URL.createObjectURL(silentBlob);
+    var silentEl   = document.createElement('audio');
+    silentEl.src   = silentUrl;
+    silentEl.play().catch(function() {});
+    setTimeout(function() { URL.revokeObjectURL(silentUrl); }, 6000);
+  } catch (e) { console.warn('Silent audio bypass failed:', e); }
 
   // Decode track 0 first so playback starts with minimal delay, then decode
   // the remaining tracks in the background while the class is running.
@@ -623,6 +704,13 @@ function startRaf() {
   rafId = requestAnimationFrame(loop);
 }
 
+// ─── Zone colors ──────────────────────────────────────────────────────────────
+var ZONE_HEX = ['', '#c8c8c8', '#888892', '#1a5cc2', '#1e7d3a', '#c89600', '#b81a1a'];
+
+function zoneColorHex(ftpPct) {
+  return ZONE_HEX[ftpZone(ftpPct)] || '#c8c8c8';
+}
+
 // ─── Mount track (UI only) ────────────────────────────────────────────────────
 function mountTrack(idx) {
   currentTrackIdx = idx;
@@ -633,19 +721,36 @@ function mountTrack(idx) {
   document.getElementById('song-name').textContent      = track.song;
   document.getElementById('song-artist').textContent    = track.artist;
   document.getElementById('track-type-tag').textContent = track.type;
-  document.getElementById('meta-bpm').textContent       = track.bpm ? '⚡ ' + track.bpm + ' BPM' : '—';
-  document.getElementById('meta-res').textContent       = track.resistance ? 'R' + track.resistance : '—';
+  document.getElementById('meta-bpm').textContent       = track.bpm ? track.bpm + ' BPM' : '—';
 
+  // Multi-zone FTP pill
+  var ftps = track.ftps && track.ftps.length ? track.ftps : (track.ftp ? [parseInt(track.ftp)] : []);
   var ftpEl = document.getElementById('meta-rpe');
-  ftpEl.textContent = track.ftp ? track.ftp + '% FTP' : '—';
-  var zone = track.ftp ? ftpZone(track.ftp) : 0;
-  ftpEl.className = 'meta-pill' + (zone ? ' zone-' + zone : '');
+  if (ftps.length === 0) {
+    ftpEl.textContent = '—';
+    ftpEl.className = 'meta-pill';
+  } else {
+    ftpEl.textContent = ftps.map(function(f) { return f + '%'; }).join('/') + ' FTP';
+    ftpEl.className = 'meta-pill zone-' + ftpZone(ftps[0]);
+  }
 
-  var cardEl = document.getElementById('song-card');
-  for (var z = 1; z <= 6; z++) cardEl.classList.remove('zone-' + z);
-  if (zone) cardEl.classList.add('zone-' + zone);
+  // Zone strip — solid or gradient for multi-zone
+  var strip = document.getElementById('song-zone-strip');
+  if (strip) {
+    if (ftps.length === 0) {
+      strip.style.background = 'var(--accent)';
+    } else if (ftps.length === 1) {
+      strip.style.background = zoneColorHex(ftps[0]);
+    } else {
+      var stops = ftps.map(function(f, i) {
+        var pct0 = (i / ftps.length * 100).toFixed(1) + '%';
+        var pct1 = ((i + 1) / ftps.length * 100).toFixed(1) + '%';
+        return zoneColorHex(f) + ' ' + pct0 + ' ' + pct1;
+      }).join(', ');
+      strip.style.background = 'linear-gradient(to bottom, ' + stops + ')';
+    }
+  }
 
-  renderIntensityBars(track.resistance);
   renderCueDots(track.cues, -1);
 
   document.getElementById('cue-text').textContent = 'Get ready…';
@@ -659,9 +764,17 @@ function mountTrack(idx) {
 
   var next = tracks[idx + 1];
   document.getElementById('next-song').textContent = next ? next.song + ' — ' + next.artist : 'End of class';
-  document.getElementById('next-type').textContent = next ? next.type + (next.ftp ? ' · ' + next.ftp + '% FTP' : '') : '';
+  var nextMeta = [];
+  if (next) {
+    if (next.type) nextMeta.push(next.type);
+    var nextFtps = next.ftps && next.ftps.length ? next.ftps : (next.ftp ? [parseInt(next.ftp)] : []);
+    if (nextFtps.length) nextMeta.push(nextFtps.map(function(f) { return f + '%'; }).join('/') + ' FTP');
+    if (audioBuffers[idx + 1]) nextMeta.push(formatTime(audioBuffers[idx + 1].duration));
+  }
+  document.getElementById('next-type').textContent = next ? nextMeta.join(' · ') : '';
 
   updateClassProgress();
+  updateClassOverview(idx);
 }
 
 // ─── Cue logic ────────────────────────────────────────────────────────────────
@@ -733,8 +846,9 @@ function updateTrackProgress(t) {
   var buffer = audioBuffers[currentTrackIdx];
   var dur = buffer ? buffer.duration : 0;
   var cur = Math.max(0, Math.min(t, dur));
-  document.getElementById('track-current').textContent  = formatTime(cur);
-  document.getElementById('track-duration').textContent = formatTime(dur);
+  var remaining = Math.max(0, dur - cur);
+  document.getElementById('track-current').textContent   = formatTime(cur);
+  document.getElementById('track-remaining').textContent = '-' + formatTime(remaining);
   document.getElementById('track-fill').style.width = (dur > 0 ? (cur / dur * 100) : 0) + '%';
   document.getElementById('class-elapsed').textContent =
     formatTime((trackOffsets[currentTrackIdx] || 0) + cur);
@@ -744,16 +858,46 @@ function updateClassProgress() {
   document.getElementById('class-progress').style.width = (currentTrackIdx / tracks.length * 100) + '%';
 }
 
-function renderIntensityBars(resistance) {
-  var container = document.getElementById('intensity-bars');
+// ─── Class intensity overview ─────────────────────────────────────────────────
+function renderClassOverview() {
+  var container = document.getElementById('class-overview');
+  if (!container) return;
   container.innerHTML = '';
-  for (var i = 1; i <= 10; i++) {
-    var bar = document.createElement('div');
-    bar.className = 'intensity-bar' + (i <= resistance ? ' on' : '');
-    bar.style.height = (6 + i * 2.2) + 'px';
-    container.appendChild(bar);
-  }
-  document.getElementById('intensity-val').textContent = resistance ? resistance + ' / 10' : '—';
+  tracks.forEach(function(track, i) {
+    var col = document.createElement('div');
+    col.className = 'overview-col';
+    col.id = 'overview-col-' + i;
+
+    var ftps = track.ftps && track.ftps.length ? track.ftps : (track.ftp ? [parseInt(track.ftp)] : []);
+    var maxFtp = ftps.length > 0 ? Math.max.apply(null, ftps) : 0;
+
+    // Height: proportional to max FTP%, mapped from 0-150 → 16-56px
+    var h = maxFtp > 0 ? Math.max(16, Math.min(56, maxFtp / 150 * 56)) : 16;
+    col.style.height = h + 'px';
+
+    if (ftps.length === 0) {
+      col.style.background = 'rgba(0,0,0,0.08)';
+    } else if (ftps.length === 1) {
+      col.style.background = zoneColorHex(ftps[0]);
+    } else {
+      // Horizontal stripes (vertical split) for multi-zone
+      var stops = ftps.map(function(f, idx) {
+        var p0 = (idx / ftps.length * 100).toFixed(1) + '%';
+        var p1 = ((idx + 1) / ftps.length * 100).toFixed(1) + '%';
+        return zoneColorHex(f) + ' ' + p0 + ' ' + p1;
+      }).join(', ');
+      col.style.background = 'linear-gradient(to right, ' + stops + ')';
+    }
+
+    container.appendChild(col);
+  });
+}
+
+function updateClassOverview(activeIdx) {
+  var cols = document.querySelectorAll('.overview-col');
+  cols.forEach(function(col, i) {
+    col.classList.toggle('overview-active', i === activeIdx);
+  });
 }
 
 // ─── Playback controls ────────────────────────────────────────────────────────
