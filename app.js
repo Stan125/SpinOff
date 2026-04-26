@@ -341,6 +341,7 @@ var trackStartCtxTime   = 0;     // audioCtx.currentTime when track position 0 w
 var pausedTrackOffset   = 0;     // track position (seconds) when paused
 var rafId               = null;
 var nextTransitionTimer = null;
+var lastDisplayedSecond = -1;  // used to tick all timer displays together
 
 // ─── Wake lock ────────────────────────────────────────────────────────────────
 async function requestWakeLock() {
@@ -693,13 +694,18 @@ function scheduleNextSource(idx) {
 
 function startRaf() {
   if (rafId) cancelAnimationFrame(rafId);
+  lastDisplayedSecond = -1;
   function loop() {
     if (!isPlaying || !audioCtx) return;
     var t = audioCtx.currentTime - trackStartCtxTime;
-    updateTrackProgress(t);
     checkCues(t);
-    updateCueCountdown(t);
     fillNextDuration();
+    var tFloor = Math.floor(t);
+    if (tFloor !== lastDisplayedSecond) {
+      lastDisplayedSecond = tFloor;
+      updateTrackProgress(t);
+      updateCueCountdown(t);
+    }
     rafId = requestAnimationFrame(loop);
   }
   rafId = requestAnimationFrame(loop);
