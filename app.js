@@ -782,6 +782,20 @@ function nextCardStyle(ftps) {
   };
 }
 
+function fitSongName() {
+  var el = document.getElementById('song-name');
+  if (!el) return;
+  el.style.fontSize = '';          // reset to CSS default (38px)
+  if (el.scrollWidth <= el.clientWidth) return;
+  var lo = 14, hi = 38;
+  while (lo < hi - 1) {
+    var mid = (lo + hi) >> 1;
+    el.style.fontSize = mid + 'px';
+    if (el.scrollWidth <= el.clientWidth) lo = mid; else hi = mid;
+  }
+  el.style.fontSize = lo + 'px';
+}
+
 // ─── Mount track (UI only) ────────────────────────────────────────────────────
 function mountTrack(idx) {
   currentTrackIdx = idx;
@@ -790,6 +804,7 @@ function mountTrack(idx) {
 
   document.getElementById('track-label').textContent    = 'Track ' + (idx + 1) + ' / ' + tracks.length;
   document.getElementById('song-name').textContent      = track.song;
+  fitSongName();
   document.getElementById('song-artist').textContent    = track.artist;
   document.getElementById('track-type-tag').textContent = track.type;
   document.getElementById('meta-bpm').textContent       = track.bpm ? track.bpm + ' BPM' : '—';
