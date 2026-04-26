@@ -16,7 +16,7 @@
     <div class="top-bar">
       <button class="icon-btn" onclick="goHome()">←</button>
       <div class="class-title-sm" id="prep-title">Loading…</div>
-      <div style="width:44px"></div>
+      <button class="icon-btn" onclick="showClassInfo()">ⓘ</button>
     </div>
     <div class="section-label">Tracks</div>
     <div id="prep-track-list" class="prep-list">
@@ -27,6 +27,10 @@
     <button id="clear-cache-btn" onclick="clearClassCache()"
             style="width:100%;margin-top:10px;padding:10px;background:none;border:none;color:#999;font-size:13px;cursor:pointer">
       Clear downloaded audio &amp; re-download
+    </button>
+    <button id="refresh-cues-btn" onclick="refreshCues()"
+            style="width:100%;margin-top:4px;padding:10px;background:none;border:none;color:#999;font-size:13px;cursor:pointer">
+      ↻ Refresh cues from Dropbox
     </button>
   </div>
 </div>
@@ -107,6 +111,34 @@
       <span class="track-time" id="track-remaining">-0:00</span>
     </div>
 
+  </div>
+</div>
+
+<div id="class-info-modal" class="cue-list-modal hidden" onclick="hideClassInfo()">
+  <div class="cue-list-sheet" onclick="event.stopPropagation()">
+    <div class="cue-list-header">
+      <span>Class Info</span>
+      <button class="cue-list-close" onclick="hideClassInfo()">✕</button>
+    </div>
+    <div class="class-info-body">
+      <div class="class-info-stats">
+        <div class="class-info-stat">
+          <div class="class-info-stat-label">Length</div>
+          <div class="class-info-stat-value" id="info-length">—</div>
+        </div>
+        <div class="class-info-stat">
+          <div class="class-info-stat-label">Tracks</div>
+          <div class="class-info-stat-value" id="info-tracks">—</div>
+        </div>
+        <div class="class-info-stat">
+          <div class="class-info-stat-label">Cues</div>
+          <div class="class-info-stat-value" id="info-cue-count">—</div>
+        </div>
+      </div>
+      <div class="class-info-section-label">Cue Browser</div>
+      <div id="info-cue-display" class="info-cue-display"></div>
+      <input type="range" id="info-cue-slider" class="info-cue-slider" min="0" max="0" value="0">
+    </div>
   </div>
 </div>
 

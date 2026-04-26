@@ -24,6 +24,18 @@ function logout() {
   window.location.href = 'index.html';
 }
 
+async function forceUpdate() {
+  if ('caches' in window) {
+    var keys = await caches.keys();
+    await Promise.all(keys.map(function(k) { return caches.delete(k); }));
+  }
+  if ('serviceWorker' in navigator) {
+    var regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map(function(r) { return r.unregister(); }));
+  }
+  window.location.reload(true);
+}
+
 function getToken() {
   return localStorage.getItem('dbx_token');
 }
@@ -815,13 +827,20 @@ function mountTrack(idx) {
 
   document.getElementById('cue-text').textContent = 'Get ready…';
   if (track.cues.length) {
-    document.getElementById('cue-label').textContent    = 'Next cue';
+    document.getElementById('cue-label').textContent     = 'Next cue';
     document.getElementById('cue-countdown').textContent = formatTime(track.cues[0].at);
-    document.getElementById('cue-next-text').innerHTML  = renderMarkdown(track.cues[0].text);
+    document.getElementById('cue-next-text').innerHTML   = renderMarkdown(track.cues[0].text);
   } else {
-    document.getElementById('cue-label').textContent     = '—';
-    document.getElementById('cue-countdown').textContent = '—';
-    document.getElementById('cue-next-text').textContent = '—';
+    var nextTrkForCue = tracks[idx + 1];
+    if (nextTrkForCue && nextTrkForCue.cues.length) {
+      document.getElementById('cue-label').textContent     = 'Next cue';
+      document.getElementById('cue-countdown').textContent = '—';
+      document.getElementById('cue-next-text').innerHTML   = renderMarkdown(nextTrkForCue.cues[0].text);
+    } else {
+      document.getElementById('cue-label').textContent     = '—';
+      document.getElementById('cue-countdown').textContent = '—';
+      document.getElementById('cue-next-text').textContent = '—';
+    }
   }
 
   var next = tracks[idx + 1];
@@ -886,8 +905,19 @@ function updateCueCountdown(t) {
   var cdEl  = document.getElementById('cue-countdown');
   var lblEl = document.getElementById('cue-label');
   if (!track || !track.cues.length) {
-    if (cdEl)  cdEl.textContent  = '—';
-    if (lblEl) lblEl.textContent = '—';
+    var nextTrkCd = tracks[currentTrackIdx + 1];
+    if (nextTrkCd && nextTrkCd.cues.length) {
+      if (lblEl) lblEl.textContent = 'Next cue';
+      var buf = audioBuffers[currentTrackIdx];
+      if (buf && cdEl) {
+        cdEl.textContent = formatTime(Math.max(0, buf.duration - t) + nextTrkCd.cues[0].at);
+      } else if (cdEl) {
+        cdEl.textContent = '—';
+      }
+    } else {
+      if (cdEl)  cdEl.textContent  = '—';
+      if (lblEl) lblEl.textContent = '—';
+    }
     return;
   }
 
@@ -1095,6 +1125,112 @@ function endOfClass() {
   document.getElementById('cue-text').textContent  = 'Great work! Class complete.';
   document.getElementById('class-progress').style.width = '100%';
   releaseWakeLock();
+}
+
+// ─── Class info modal ─────────────────────────────────────────────────────────
+var infoCues = [];
+
+function showClassInfo() {
+  var hasAll = audioBuffers.length > 0 && audioBuffers.every(function(b) { return b !== null; });
+  var totalSecs = 0;
+  if (hasAll) audioBuffers.forEach(function(b) { totalSecs += b.duration; });
+  document.getElementById('info-length').textContent = hasAll ? formatTime(totalSecs) : '—';
+  document.getElementById('info-tracks').textContent = tracks.length;
+
+  infoCues = [];
+  tracks.forEach(function(track, ti) {
+    track.cues.forEach(function(cue) {
+      infoCues.push({ trackIdx: ti, at: cue.at, text: cue.text });
+    });
+  });
+  document.getElementById('info-cue-count').textContent = infoCues.length;
+
+  var slider = document.getElementById('info-cue-slider');
+  var display = document.getElementById('info-cue-display');
+
+  if (infoCues.length === 0) {
+    slider.style.display = 'none';
+    display.innerHTML = '<div class="cue-list-none">No cues in this class.</div>';
+  } else {
+    slider.style.display = '';
+    slider.min = 0;
+    slider.max = infoCues.length - 1;
+    slider.value = 0;
+    updateInfoSliderFill(slider);
+    renderInfoCue(0);
+    slider.oninput = function() {
+      updateInfoSliderFill(this);
+      renderInfoCue(parseInt(this.value));
+    };
+  }
+
+  document.getElementById('class-info-modal').classList.remove('hidden');
+}
+
+function updateInfoSliderFill(slider) {
+  var pct = infoCues.length > 1
+    ? ((slider.value - slider.min) / (slider.max - slider.min) * 100)
+    : 0;
+  slider.style.background =
+    'linear-gradient(to right, var(--accent) ' + pct + '%, rgba(0,0,0,0.09) ' + pct + '%)';
+}
+
+function renderInfoCue(idx) {
+  var cue = infoCues[idx];
+  var track = tracks[cue.trackIdx];
+  document.getElementById('info-cue-display').innerHTML =
+    '<div class="info-cue-meta">Track ' + (cue.trackIdx + 1) + ' · ' + track.song +
+      ' · <span class="info-cue-time">' + formatTime(cue.at) + '</span></div>' +
+    '<div class="info-cue-text">' + renderMarkdown(cue.text) + '</div>' +
+    '<div class="info-cue-counter">' + (idx + 1) + ' / ' + infoCues.length + '</div>';
+}
+
+function hideClassInfo() {
+  document.getElementById('class-info-modal').classList.add('hidden');
+}
+
+async function refreshCues() {
+  var folderPath = sessionStorage.getItem('current_class');
+  if (!folderPath) return;
+  var btn = document.getElementById('refresh-cues-btn');
+  if (btn) { btn.textContent = '↻ Refreshing…'; btn.disabled = true; }
+  try {
+    var txt = await dbxDownloadText(folderPath + '/class.txt');
+    var freshTracks = parseTxt(txt, folderPath);
+    var totalCues = 0;
+    for (var i = 0; i < tracks.length && i < freshTracks.length; i++) {
+      var f = freshTracks[i];
+      tracks[i].song       = f.song;
+      tracks[i].artist     = f.artist;
+      tracks[i].type       = f.type;
+      tracks[i].bpm        = f.bpm;
+      tracks[i].ftp        = f.ftp;
+      tracks[i].ftps       = f.ftps;
+      tracks[i].resistance = f.resistance;
+      tracks[i].cues       = f.cues;
+      totalCues += f.cues.length;
+    }
+    renderPrepList();
+    renderClassOverview();
+    for (var j = 0; j < tracks.length; j++) {
+      setPrepStatus(j, tracks[j].rawArrayBuffer ? 'ok' : (tracks[j].audioPath ? 'none' : 'none'));
+    }
+    var trackMeta = tracks.map(function(t) {
+      return { song: t.song, artist: t.artist, type: t.type, bpm: t.bpm, ftp: t.ftp,
+               ftps: t.ftps || [], resistance: t.resistance, audioPath: t.audioPath,
+               cues: t.cues, blobUrl: null };
+    });
+    await idbPut('classes', { folderPath: folderPath, tracks: trackMeta });
+    if (btn) {
+      btn.textContent = '✓ Updated (' + totalCues + ' cues)';
+      setTimeout(function() {
+        btn.textContent = '↻ Refresh cues from Dropbox';
+        btn.disabled = false;
+      }, 2500);
+    }
+  } catch (e) {
+    if (btn) { btn.textContent = '✗ Failed — ' + e.message; btn.disabled = false; }
+  }
 }
 
 // ─── FTP zone ─────────────────────────────────────────────────────────────────
