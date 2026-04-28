@@ -315,7 +315,7 @@ html, body {
   letter-spacing: 1px;
 }
 .cue-text {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 500;
   line-height: 1.35;
   color: var(--text);
@@ -336,7 +336,7 @@ html, body {
   margin: 12px 0 10px;
 }
 .cue-next-text {
-  font-size: 22px;
+  font-size: 28px;
   font-weight: 500;
   color: var(--text);
   line-height: 1.35;

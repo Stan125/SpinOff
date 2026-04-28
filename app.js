@@ -698,8 +698,10 @@ function scheduleNextSource(idx) {
     if (audioNextIdx < tracks.length) {
       scheduleNextSource(currentTrackIdx);
     } else {
-      // Last track's audio just started (no further tracks) — wait for it to finish
-      endOfClass();
+      // nextSource wasn't pre-scheduled (buffer wasn't decoded yet at schedule time,
+      // or truly no more tracks). Re-enter playFromOffset so it can find the now-
+      // decoded buffer, or end the class if there genuinely are no more tracks.
+      playFromOffset(nextIdx, 0);
     }
   }, Math.max(0, msUntilNext));
 }
