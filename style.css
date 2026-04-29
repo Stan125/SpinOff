@@ -639,6 +639,14 @@ html, body {
   -webkit-overflow-scrolling: touch;
 }
 
+.class-info-last-played {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
 .class-info-stats {
   display: flex;
   gap: 10px;

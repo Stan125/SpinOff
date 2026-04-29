@@ -4,28 +4,48 @@
 # %FTP can span two zones — use / to separate e.g. 85/110
 # The song card and "up next" panel will show coloured stripes for multi-zone songs.
 
-## Warm-up Flow | Various | Warm-up | 110 BPM | 60 | 3 | 01_warmup.mp3
+## Warm-up Flow | Various
+type: Warm-up
+rpm: 55
+ftp: 60
+resistance: 3
+file: 01_warmup.mp3
 
 0:00 Welcome everyone. Find a comfortable cadence, loosen up the legs.
 0:30 Start to feel the pedals — light resistance, easy spin.
 1:30 Bring your heart rate up gently. Breathe deep.
 3:00 **Add a touch more resistance.** We're almost ready to work.
 
-## Thunderstruck | AC/DC | Climb | 138 BPM | 85/105 | 7 | 02_thunderstruck.mp3
+## Thunderstruck | AC/DC
+type: Climb
+rpm: 69
+ftp: 85/105
+resistance: 7
+file: 02_thunderstruck.mp3
 
 0:00 Dial up to resistance 7. Settle in, find your position.
 0:45 Push through the chorus — stay seated, drive from the hips. **Keep cadence above 80.**
 1:52 Bridge coming — one more click. **Grind it out.**
 3:30 Final push — **empty the tank.** 30 seconds left on this climb.
 
-## Sandstorm | Darude | Sprint | 150 BPM | 112 | 5 | 03_sandstorm.mp3
+## Sandstorm | Darude
+type: Sprint
+rpm: 75
+ftp: 112
+resistance: 5
+file: 03_sandstorm.mp3
 
 0:00 **Drop the resistance** — this is all speed. Sprint!
 0:32 Hit that chorus at max effort. Go go go!
 1:15 Recover on the breakdown. Breathe. You earned it.
 2:00 Here we go again — **full gas!**
 
-## Cool Down | Various | Cool-down | 100 BPM | 55 | 2 | 04_cooldown.mp3
+## Cool Down | Various
+type: Cool-down
+rpm: 100
+ftp: 55
+resistance: 2
+file: 04_cooldown.mp3
 
 0:00 Bring it right down. Shake out the legs.
 1:00 Nice easy spin. Let your heart rate drop naturally.

@@ -1,42 +1,76 @@
 # SpinOff class template
 # ─────────────────────────────────────────────────────────────────────────────
-# Run ./generate_class.sh <folder> to auto-fill titles, artists, and BPM
-# from your audio files — then just add %FTP, resistance, type, and cues.
+# Run ./generate_class.sh <folder> to auto-fill titles, artists, and RPM
+# from your audio files — then add type, ftp, resistance, and cues.
 #
 # Format:
-#   ## Song Title | Artist | Type | BPM | %FTP | Resistance | filename
+#   ## Song Title | Artist
+#   type: Type
+#   rpm: RPM
+#   ftp: %FTP
+#   resistance: Resistance
+#   file: filename.mp3
+#
+#   M:SS Cue text here
 #
 # Type options : Warm-up  Endurance  Tempo  Climb  Sprint  Cool-down
+# RPM          : cadence in revolutions per minute
+#                generate_class.sh auto-converts BPM tags (BPM/2 if >= 110)
 # %FTP zones   : <55 white  55-75 grey  75-90 blue  90-105 green  105-120 yellow  120+ red
-# %FTP multi   : separate with / for songs that span two zones  e.g. 85/110
+# %FTP multi   : separate with / for songs spanning two zones  e.g. 85/110
 #                the song card and "up next" panel will show coloured stripes
 # Resistance   : 1–10  (informational only — not shown in the UI)
 # Cues         : M:SS text    use **bold** for emphasis
 # ─────────────────────────────────────────────────────────────────────────────
 
-## Song Title | Artist | Warm-up | 110 BPM | 60 | 3 | track01.mp3
+## Song Title | Artist
+type: Warm-up
+rpm: 55
+ftp: 60
+resistance: 3
+file: track01.mp3
 
 0:00 Welcome. Find your cadence — easy spin, light resistance.
 1:30 Start building. **Add one click of resistance.**
 
-## Song Title | Artist | Tempo | 135 BPM | 80 | 6 | track02.mp3
+## Song Title | Artist
+type: Tempo
+rpm: 68
+ftp: 80
+resistance: 6
+file: track02.mp3
 
-0:00 Settle in at tempo pace. Cadence 85–95 rpm.
+0:00 Settle in at tempo pace.
 1:30 Halfway — hold the effort. **Don't let the cadence drop.**
 
-## Song Title | Artist | Climb | 125 BPM | 85/105 | 9 | track03.mp3
+## Song Title | Artist
+type: Climb
+rpm: 63
+ftp: 85/105
+resistance: 9
+file: track03.mp3
 
 0:00 **Dial up.** Seated climb — drive from the hips.
 2:00 Building into threshold now — **push harder.**
 3:30 Final push — **empty the tank.**
 
-## Song Title | Artist | Sprint | 160 BPM | 115 | 4 | track04.mp3
+## Song Title | Artist
+type: Sprint
+rpm: 80
+ftp: 115
+resistance: 4
+file: track04.mp3
 
 0:00 **Drop resistance, go!** All speed.
 1:00 Recover. Breathe.
 1:30 **Back at it — full gas!**
 
-## Song Title | Artist | Cool-down | 95 BPM | 55 | 2 | track05.mp3
+## Song Title | Artist
+type: Cool-down
+rpm: 95
+ftp: 55
+resistance: 2
+file: track05.mp3
 
 0:00 Bring it right down. Easy legs.
 1:30 **Great work.** Float it out.

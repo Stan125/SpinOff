@@ -298,6 +298,11 @@ function openClass(folderPath) {
 }
 
 // ─── Class txt parser ─────────────────────────────────────────────────────────
+function bpmToRpm(bpm) {
+  var n = parseInt(bpm) || 0;
+  return n > 0 ? (n < 110 ? n : Math.round(n / 2)) : 0;
+}
+
 function parseTxt(txt, folderPath) {
   var tracks = [];
   var sections = txt.split(/^##\s+/m).filter(function(s) { return s.trim(); });
@@ -308,27 +313,50 @@ function parseTxt(txt, folderPath) {
       .filter(function(l) { return l && !l.startsWith('#'); });
     if (lines.length === 0) return;
 
-    var parts = lines[0].split('|').map(function(p) { return p.trim(); });
-    var song       = parts[0] || '?';
-    var artist     = parts[1] || '';
-    var type       = parts[2] || '';
-    var bpm        = (parts[3] || '').replace(/bpm\s*/i, '').trim();
-    var ftpStr     = (parts[4] || '').replace(/ftp\s*/i, '').trim();
-    var ftps       = ftpStr ? ftpStr.split(/[\/,]/).map(function(s) { return parseInt(s.trim()) || 0; }).filter(Boolean) : [];
-    var ftp        = ftps.length > 0 ? String(ftps[0]) : '';
-    var resistance = parseInt((parts[5] || '0').replace(/r/i, '')) || 0;
-    var filename   = parts[6] || '';
-    var audioPath  = filename ? folderPath + '/' + filename : null;
-
+    var song, artist, type, bpm, ftpStr, resistance, filename;
     var cues = [];
-    for (var i = 1; i < lines.length; i++) {
-      var match = lines[i].match(/^(\d+):(\d{2})\s+(.+)$/);
-      if (match) {
-        var secs = parseInt(match[1]) * 60 + parseInt(match[2]);
-        cues.push({ at: secs, text: match[3] });
+
+    var pipeCount = (lines[0].match(/\|/g) || []).length;
+    if (pipeCount >= 3) {
+      // Legacy pipe format: Song | Artist | Type | BPM | FTP | Resistance | file
+      var parts = lines[0].split('|').map(function(p) { return p.trim(); });
+      song       = parts[0] || '?';
+      artist     = parts[1] || '';
+      type       = parts[2] || '';
+      var rawBpm = (parts[3] || '').replace(/bpm\s*/i, '').trim();
+      bpm        = rawBpm ? String(bpmToRpm(parseInt(rawBpm))) : '';
+      ftpStr     = (parts[4] || '').replace(/ftp\s*/i, '').trim();
+      resistance = parseInt((parts[5] || '0').replace(/r/i, '')) || 0;
+      filename   = parts[6] || '';
+      for (var i = 1; i < lines.length; i++) {
+        var m = lines[i].match(/^(\d+):(\d{2})\s+(.+)$/);
+        if (m) cues.push({ at: parseInt(m[1]) * 60 + parseInt(m[2]), text: m[3] });
+      }
+    } else {
+      // New key:value format: first line is "Song | Artist", rest are "key: value" or cues
+      var header = lines[0].split('|').map(function(p) { return p.trim(); });
+      song = header[0] || '?';
+      artist = header[1] || '';
+      type = ''; bpm = ''; ftpStr = ''; resistance = 0; filename = '';
+      for (var i = 1; i < lines.length; i++) {
+        var kv = lines[i].match(/^(\w+):\s*(.*)$/);
+        if (kv) {
+          var key = kv[1].toLowerCase(), val = kv[2].trim();
+          if      (key === 'type')       type = val;
+          else if (key === 'rpm')        bpm  = val;
+          else if (key === 'ftp')        ftpStr = val;
+          else if (key === 'resistance') resistance = parseInt(val) || 0;
+          else if (key === 'file')       filename = val;
+          continue;
+        }
+        var cm = lines[i].match(/^(\d+):(\d{2})\s+(.+)$/);
+        if (cm) cues.push({ at: parseInt(cm[1]) * 60 + parseInt(cm[2]), text: cm[3] });
       }
     }
 
+    var ftps = ftpStr ? ftpStr.split(/[\/,]/).map(function(s) { return parseInt(s.trim()) || 0; }).filter(Boolean) : [];
+    var ftp  = ftps.length > 0 ? String(ftps[0]) : '';
+    var audioPath = filename ? folderPath + '/' + filename : null;
     tracks.push({ song: song, artist: artist, type: type, bpm: bpm, ftp: ftp, ftps: ftps,
                   resistance: resistance, audioPath: audioPath, cues: cues, blobUrl: null });
   });
@@ -464,7 +492,7 @@ function renderPrepList() {
   list.innerHTML = '';
   tracks.forEach(function(track, i) {
     var meta = [];
-    if (track.bpm) meta.push(track.bpm + ' BPM');
+    if (track.bpm) meta.push(track.bpm + ' RPM');
     if (track.ftp) meta.push(track.ftp + '% FTP');
     if (track.resistance) meta.push('R' + track.resistance);
     meta.push(track.cues.length + ' cue' + (track.cues.length !== 1 ? 's' : ''));
@@ -809,7 +837,7 @@ function mountTrack(idx) {
   fitSongName();
   document.getElementById('song-artist').textContent    = track.artist;
   document.getElementById('track-type-tag').textContent = track.type;
-  document.getElementById('meta-bpm').textContent       = track.bpm ? track.bpm + ' BPM' : '—';
+  document.getElementById('meta-bpm').textContent       = track.bpm ? track.bpm + ' RPM' : '—';
 
   // Multi-zone FTP pill
   var ftps = track.ftps && track.ftps.length ? track.ftps : (track.ftp ? [parseInt(track.ftp)] : []);
@@ -881,6 +909,11 @@ function mountTrack(idx) {
     document.getElementById('next-type').textContent    = '';
     document.getElementById('next-duration').textContent = '';
     if (nextCardEl) { nextCardEl.style.background = ''; nextCardEl.style.borderColor = ''; }
+  }
+
+  if (idx === tracks.length - 1) {
+    var fp = sessionStorage.getItem('current_class');
+    if (fp) localStorage.setItem('spinoff_last_played_' + fp, new Date().toISOString());
   }
 
   updateClassProgress();
@@ -1148,6 +1181,10 @@ function endOfClass() {
 var infoCues = [];
 
 function showClassInfo() {
+  var fp = sessionStorage.getItem('current_class');
+  var lastPlayed = fp ? localStorage.getItem('spinoff_last_played_' + fp) : null;
+  document.getElementById('info-last-played').textContent = formatLastPlayed(lastPlayed);
+
   var hasAll = audioBuffers.length > 0 && audioBuffers.every(function(b) { return b !== null; });
   var totalSecs = 0;
   if (hasAll) audioBuffers.forEach(function(b) { totalSecs += b.duration; });
@@ -1262,6 +1299,16 @@ function ftpZone(ftpPct) {
 }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
+function formatLastPlayed(iso) {
+  if (!iso) return 'Never played';
+  var then = new Date(iso);
+  var days = Math.floor((Date.now() - then) / 86400000);
+  if (days === 0) return 'Last played: Today';
+  if (days === 1) return 'Last played: Yesterday';
+  if (days < 7)  return 'Last played: ' + days + ' days ago';
+  return 'Last played: ' + then.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
 function formatTime(secs) {
   var s = Math.floor(Math.max(0, secs));
   var m = Math.floor(s / 60);
