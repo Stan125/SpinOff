@@ -339,7 +339,7 @@ function parseTxt(txt, folderPath) {
       artist = header[1] || '';
       type = ''; bpm = ''; ftpStr = ''; resistance = 0; filename = '';
       for (var i = 1; i < lines.length; i++) {
-        var kv = lines[i].match(/^(\w+):\s*(.*)$/);
+        var kv = lines[i].match(/^([a-zA-Z]\w*):\s*(.*)$/);
         if (kv) {
           var key = kv[1].toLowerCase(), val = kv[2].trim();
           if      (key === 'type')       type = val;
@@ -867,7 +867,8 @@ function mountTrack(idx) {
     }
   }
 
-  document.getElementById('song-countdown').textContent = '—';
+  var scEl = document.getElementById('song-countdown');
+  if (scEl) scEl.textContent = '—';
   renderCueDots(track.cues, -1);
 
   document.getElementById('cue-text').textContent = 'Get ready…';
@@ -1051,9 +1052,11 @@ function updateTrackProgress(t) {
   var dur = buffer ? buffer.duration : 0;
   var cur = Math.max(0, Math.min(t, dur));
   var remaining = Math.max(0, dur - cur);
-  document.getElementById('track-current').textContent   = formatTime(cur);
-  document.getElementById('track-remaining').textContent = '-' + formatTime(remaining);
-  document.getElementById('song-countdown').textContent  = '-' + formatTime(remaining);
+  document.getElementById('track-current').textContent = formatTime(cur);
+  var trEl = document.getElementById('track-remaining');
+  if (trEl) trEl.textContent = '-' + formatTime(remaining);
+  var scEl2 = document.getElementById('song-countdown');
+  if (scEl2) scEl2.textContent = '-' + formatTime(remaining);
   document.getElementById('track-fill').style.width = (dur > 0 ? (cur / dur * 100) : 0) + '%';
   document.getElementById('class-elapsed').textContent =
     formatTime((trackOffsets[currentTrackIdx] || 0) + cur);
