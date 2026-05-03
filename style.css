@@ -200,6 +200,8 @@ html, body {
   opacity: 0.45;
   min-height: 16px;
   transition: opacity 0.3s;
+  position: relative;
+  overflow: hidden;
 }
 .overview-col.overview-active {
   opacity: 1;

@@ -2,7 +2,7 @@
 # generate_class.sh — generate a SpinOff class.txt from a folder of audio files
 #
 # Usage:  ./generate_class.sh <folder> [output_file]
-# Output: class.txt (or specified file) — edit type, ftp, resistance, and cues.
+# Output: class.txt (or specified file) — edit type, ftp, and cues.
 #
 # Requires ffprobe (part of ffmpeg) for tag reading.
 # Install: brew install ffmpeg  /  apt install ffmpeg
@@ -87,7 +87,7 @@ echo "Found ${#FILES[@]} audio file(s) in $FOLDER"
 
 {
   echo "# SpinOff class — generated $(date '+%Y-%m-%d') from: $(basename "$FOLDER")"
-  echo "# Edit: type, ftp, resistance, and cues. Titles/artists/RPM read from tags."
+  echo "# Edit: type, ftp, and cues. Titles/artists/RPM read from tags."
   echo "# %FTP zones : <55 white  55-75 grey  75-90 blue  90-105 green  105-120 yellow  120+ red"
   echo "# %FTP multi : use / to span two zones e.g. 85/110  — shows coloured stripes in the app"
   echo "# Cues       : M:SS text   use **bold** for emphasis"
@@ -130,7 +130,6 @@ echo "Found ${#FILES[@]} audio file(s) in $FOLDER"
     echo "type: $TYPE"
     echo "rpm: $RPM"
     echo "ftp: 80"
-    echo "resistance: 5"
     echo "file: $FILENAME"
     echo ""
     echo "0:00 "
@@ -141,7 +140,7 @@ echo "Found ${#FILES[@]} audio file(s) in $FOLDER"
 echo "Generated: $OUTPUT"
 echo ""
 echo "Next steps:"
-echo "  1. Open $OUTPUT and set ftp and resistance for each track"
+echo "  1. Open $OUTPUT and set ftp for each track"
 echo "  2. Change type where needed (Warm-up / Endurance / Tempo / Climb / Sprint / Cool-down)"
 echo "  3. Add cue lines below each track header (format: M:SS text)"
 echo "  4. Upload the folder + class.txt to Dropbox/Apps/SpinOffApp/<class-name>/"

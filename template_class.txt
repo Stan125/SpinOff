@@ -1,14 +1,13 @@
 # SpinOff class template
 # ─────────────────────────────────────────────────────────────────────────────
 # Run ./generate_class.sh <folder> to auto-fill titles, artists, and RPM
-# from your audio files — then add type, ftp, resistance, and cues.
+# from your audio files — then add type, ftp, and cues.
 #
 # Format:
 #   ## Song Title | Artist
 #   type: Type
 #   rpm: RPM
 #   ftp: %FTP
-#   resistance: Resistance
 #   file: filename.mp3
 #
 #   M:SS Cue text here
@@ -19,7 +18,6 @@
 # %FTP zones   : <55 white  55-75 grey  75-90 blue  90-105 green  105-120 yellow  120+ red
 # %FTP multi   : separate with / for songs spanning two zones  e.g. 85/110
 #                the song card and "up next" panel will show coloured stripes
-# Resistance   : 1–10  (informational only — not shown in the UI)
 # Cues         : M:SS text    use **bold** for emphasis
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -27,7 +25,6 @@
 type: Warm-up
 rpm: 55
 ftp: 60
-resistance: 3
 file: track01.mp3
 
 0:00 Welcome. Find your cadence — easy spin, light resistance.
@@ -37,7 +34,6 @@ file: track01.mp3
 type: Tempo
 rpm: 68
 ftp: 80
-resistance: 6
 file: track02.mp3
 
 0:00 Settle in at tempo pace.
@@ -47,7 +43,6 @@ file: track02.mp3
 type: Climb
 rpm: 63
 ftp: 85/105
-resistance: 9
 file: track03.mp3
 
 0:00 **Dial up.** Seated climb — drive from the hips.
@@ -58,7 +53,6 @@ file: track03.mp3
 type: Sprint
 rpm: 80
 ftp: 115
-resistance: 4
 file: track04.mp3
 
 0:00 **Drop resistance, go!** All speed.
@@ -69,7 +63,6 @@ file: track04.mp3
 type: Cool-down
 rpm: 95
 ftp: 55
-resistance: 2
 file: track05.mp3
 
 0:00 Bring it right down. Easy legs.

@@ -8,7 +8,6 @@
 type: Warm-up
 rpm: 55
 ftp: 60
-resistance: 3
 file: 01_warmup.mp3
 
 0:00 Welcome everyone. Find a comfortable cadence, loosen up the legs.
@@ -20,7 +19,6 @@ file: 01_warmup.mp3
 type: Climb
 rpm: 69
 ftp: 85/105
-resistance: 7
 file: 02_thunderstruck.mp3
 
 0:00 Dial up to resistance 7. Settle in, find your position.
@@ -32,7 +30,6 @@ file: 02_thunderstruck.mp3
 type: Sprint
 rpm: 75
 ftp: 112
-resistance: 5
 file: 03_sandstorm.mp3
 
 0:00 **Drop the resistance** — this is all speed. Sprint!
@@ -44,7 +41,6 @@ file: 03_sandstorm.mp3
 type: Cool-down
 rpm: 100
 ftp: 55
-resistance: 2
 file: 04_cooldown.mp3
 
 0:00 Bring it right down. Shake out the legs.

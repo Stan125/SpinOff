@@ -494,7 +494,6 @@ function renderPrepList() {
     var meta = [];
     if (track.bpm) meta.push(track.bpm + ' RPM');
     if (track.ftp) meta.push(track.ftp + '% FTP');
-    if (track.resistance) meta.push('R' + track.resistance);
     meta.push(track.cues.length + ' cue' + (track.cues.length !== 1 ? 's' : ''));
 
     var row = document.createElement('div');
@@ -899,16 +898,17 @@ function mountTrack(idx) {
     if (next.type) nextMeta.push(next.type);
     if (nextFtps.length) nextMeta.push(nextFtps.map(function(f) { return f + '%'; }).join('/') + ' FTP');
     document.getElementById('next-type').textContent = nextMeta.join(' · ');
-    document.getElementById('next-duration').textContent =
-      audioBuffers[idx + 1] ? formatTime(audioBuffers[idx + 1].duration) : '';
+    var ndEl = document.getElementById('next-duration');
+    if (ndEl) ndEl.textContent = audioBuffers[idx + 1] ? formatTime(audioBuffers[idx + 1].duration) : '';
     if (nextCardEl) {
       var ns = nextCardStyle(nextFtps);
       nextCardEl.style.background  = ns.bg;
       nextCardEl.style.borderColor = ns.border;
     }
   } else {
-    document.getElementById('next-type').textContent    = '';
-    document.getElementById('next-duration').textContent = '';
+    document.getElementById('next-type').textContent = '';
+    var ndEl2 = document.getElementById('next-duration');
+    if (ndEl2) ndEl2.textContent = '';
     if (nextCardEl) { nextCardEl.style.background = ''; nextCardEl.style.borderColor = ''; }
   }
 
@@ -1095,6 +1095,29 @@ function renderClassOverview() {
         return zoneColorHex(f) + ' ' + p0 + ' ' + p1;
       }).join(', ');
       col.style.background = 'linear-gradient(to right, ' + stops + ')';
+    }
+
+    // Terrain icon based on RPM: ≤80 = climb (mountain), >80 = flat
+    var rpm = parseInt(track.bpm) || 0;
+    if (rpm > 0) {
+      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('width', '12');
+      svg.setAttribute('height', '8');
+      svg.setAttribute('viewBox', '0 0 12 8');
+      svg.style.cssText = 'position:absolute;bottom:3px;left:50%;transform:translateX(-50%);pointer-events:none';
+      var p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      if (rpm <= 80) {
+        p.setAttribute('d', 'M2 7 L6 1 L10 7Z');
+        p.setAttribute('fill', 'rgba(255,255,255,0.75)');
+      } else {
+        p.setAttribute('d', 'M1 5 L11 5');
+        p.setAttribute('stroke', 'rgba(255,255,255,0.75)');
+        p.setAttribute('stroke-width', '2');
+        p.setAttribute('stroke-linecap', 'round');
+        p.setAttribute('fill', 'none');
+      }
+      svg.appendChild(p);
+      col.appendChild(svg);
     }
 
     container.appendChild(col);
