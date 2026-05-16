@@ -38,6 +38,8 @@
 
     <div class="progress-bar"><div class="progress-fill" id="class-progress"></div></div>
 
+    <div id="class-overview" class="class-overview"></div>
+
     <div class="song-card" id="song-card">
       <div class="song-label">
         <span id="track-label">Track 1</span>
@@ -158,7 +160,7 @@ window.addEventListener('load', function() {
   showScreen('prep-screen');
 
   tracks = DEMO_TRACKS.map(function(d) {
-    return { song: d.song, artist: d.artist, type: d.type, bpm: d.bpm, ftp: d.ftp,
+    return { song: d.song, artist: d.artist, type: d.type, bpm: String(bpmToRpm(parseInt(d.bpm))), ftp: d.ftp,
              resistance: d.resistance, audioPath: null, cues: d.cues, blobUrl: null,
              _hz: d.hz, _dur: d.dur };
   });
@@ -168,6 +170,7 @@ window.addEventListener('load', function() {
   // Generate audio one track at a time so the UI can update between each
   function genNext(i) {
     if (i >= tracks.length) {
+      renderClassOverview();
       var btn = document.getElementById('start-btn');
       btn.disabled = false;
       btn.textContent = 'Start Demo ▶';

@@ -429,6 +429,32 @@ async function initRunner(folderPath) {
         setPrepStatus(ci, 'none');
       }
     }
+
+    // Re-download class.txt to refresh metadata (bpm/ftp/type/cues) — the
+    // cached metadata may be stale if the file was saved by an older app
+    // version that didn't parse all fields.  Audio stays from cache.
+    try {
+      var metaTxt = await dbxDownloadText(folderPath + '/class.txt');
+      var freshMeta = parseTxt(metaTxt, folderPath);
+      for (var mi = 0; mi < tracks.length && mi < freshMeta.length; mi++) {
+        tracks[mi].bpm        = freshMeta[mi].bpm;
+        tracks[mi].ftp        = freshMeta[mi].ftp;
+        tracks[mi].ftps       = freshMeta[mi].ftps;
+        tracks[mi].type       = freshMeta[mi].type;
+        tracks[mi].resistance = freshMeta[mi].resistance;
+        tracks[mi].cues       = freshMeta[mi].cues;
+      }
+      renderPrepList();
+      var updatedMeta = tracks.map(function(t) {
+        return { song: t.song, artist: t.artist, type: t.type, bpm: t.bpm, ftp: t.ftp,
+                 ftps: t.ftps || [], resistance: t.resistance, audioPath: t.audioPath,
+                 cues: t.cues, blobUrl: null };
+      });
+      idbPut('classes', { folderPath: folderPath, tracks: updatedMeta })
+        .catch(function(e) { console.warn('IDB meta update failed:', e); });
+    } catch (e) {
+      console.log('Metadata refresh skipped (offline?):', e.message);
+    }
   } else {
     // ── Download from Dropbox ─────────────────────────────────────────────────
     var txt;
