@@ -76,6 +76,23 @@ async function dbxDownloadText(path) {
   return res.text();
 }
 
+async function dbxUploadText(path, text) {
+  const res = await fetch(DBX_CONTENT + '/files/upload', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + getToken(),
+      'Dropbox-API-Arg': dropboxArg({ path: path, mode: 'overwrite', mute: true }),
+      'Content-Type': 'application/octet-stream'
+    },
+    body: text
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error('Upload failed ' + res.status + ': ' + err);
+  }
+  return res.json();
+}
+
 var MIME_MAP = { mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac',
                  wav: 'audio/wav', ogg: 'audio/ogg', flac: 'audio/flac',
                  opus: 'audio/ogg; codecs=opus', webm: 'audio/webm' };
@@ -422,6 +439,10 @@ async function initRunner(folderPath) {
           tracks[ci].rawArrayBuffer = audioRec.buffer;
           tracks[ci].mime = audioRec.mime;
           setPrepStatus(ci, 'ok');
+          // Fire-and-forget: probe duration so showClassInfo() can display total length
+          ;(function(idx, buf, m) {
+            probeAudioDuration(buf, m).then(function(d) { if (d > 0) tracks[idx].duration = d; });
+          })(ci, audioRec.buffer, audioRec.mime);
         } else {
           setPrepStatus(ci, 'error');
         }
@@ -483,6 +504,10 @@ async function initRunner(folderPath) {
           tracks[i].rawArrayBuffer = dl.arrayBuffer;
           tracks[i].mime = dl.mime;
           setPrepStatus(i, 'ok');
+          // Fire-and-forget: probe duration so showClassInfo() can display total length
+          ;(function(idx, buf, m) {
+            probeAudioDuration(buf, m).then(function(d) { if (d > 0) tracks[idx].duration = d; });
+          })(i, dl.arrayBuffer, dl.mime);
         } catch (e) {
           setPrepStatus(i, 'error');
           console.error('Preload failed:', tracks[i].song, e);
@@ -572,6 +597,23 @@ function decodeAudio(ctx, arrayBuffer) {
     ctx.decodeAudioData(arrayBuffer, resolve, function(e) {
       reject(e || new Error('decodeAudioData failed'));
     });
+  });
+}
+
+// Probe audio duration via HTMLAudioElement — no AudioContext or user gesture
+// needed. Creates a temporary Blob URL (copying the data) so the original
+// ArrayBuffer remains intact for decodeAudioData later.
+function probeAudioDuration(arrayBuffer, mime) {
+  return new Promise(function(resolve) {
+    try {
+      var blob = new Blob([arrayBuffer], { type: mime || 'audio/mpeg' });
+      var url  = URL.createObjectURL(blob);
+      var el   = document.createElement('audio');
+      el.preload = 'metadata';
+      el.onloadedmetadata = function() { URL.revokeObjectURL(url); resolve(isFinite(el.duration) ? el.duration : 0); };
+      el.onerror          = function() { URL.revokeObjectURL(url); resolve(0); };
+      el.src = url;
+    } catch (e) { resolve(0); }
   });
 }
 
@@ -1247,10 +1289,16 @@ function showClassInfo() {
   var lastPlayed = fp ? localStorage.getItem('spinoff_last_played_' + fp) : null;
   document.getElementById('info-last-played').textContent = formatLastPlayed(lastPlayed);
 
-  var hasAll = audioBuffers.length > 0 && audioBuffers.every(function(b) { return b !== null; });
   var totalSecs = 0;
-  if (hasAll) audioBuffers.forEach(function(b) { totalSecs += b.duration; });
-  document.getElementById('info-length').textContent = hasAll ? formatTime(totalSecs) : '—';
+  var counted = 0;
+  tracks.forEach(function(t, i) {
+    var dur = (audioBuffers[i] && audioBuffers[i].duration) || t.duration || 0;
+    if (dur > 0) { totalSecs += dur; counted++; }
+  });
+  document.getElementById('info-length').textContent =
+    counted === tracks.length ? formatTime(totalSecs)
+    : counted > 0 ? formatTime(totalSecs) + '+'
+    : '—';
   document.getElementById('info-tracks').textContent = tracks.length;
 
   infoCues = [];
@@ -1375,4 +1423,66 @@ function formatTime(secs) {
   var s = Math.floor(Math.max(0, secs));
   var m = Math.floor(s / 60);
   return m + ':' + String(s % 60).padStart(2, '0');
+}
+
+// ─── File editor ─────────────────────────────────────────────────────────────
+var editorFilePath = null;
+
+async function openFileEditor(filename) {
+  var folderPath = sessionStorage.getItem('current_class');
+  if (!folderPath) return;
+  hideClassInfo();
+
+  var path     = folderPath + '/' + filename;
+  var titleEl  = document.getElementById('editor-title');
+  var textarea = document.getElementById('editor-textarea');
+  var saveBtn  = document.getElementById('editor-save-btn');
+
+  titleEl.textContent  = filename;
+  textarea.value       = 'Loading…';
+  textarea.disabled    = true;
+  saveBtn.disabled     = true;
+  saveBtn.textContent  = 'Save';
+  document.getElementById('text-editor-modal').classList.remove('hidden');
+
+  try {
+    textarea.value = await dbxDownloadText(path);
+  } catch (e) {
+    // File doesn't exist yet (e.g. notes.txt) — start blank
+    textarea.value = '';
+  }
+  textarea.disabled = false;
+  saveBtn.disabled  = false;
+  editorFilePath    = path;
+  textarea.focus();
+}
+
+async function saveFileEditor() {
+  if (!editorFilePath) return;
+  var saveBtn  = document.getElementById('editor-save-btn');
+  var textarea = document.getElementById('editor-textarea');
+  saveBtn.textContent = 'Saving…';
+  saveBtn.disabled    = true;
+  textarea.disabled   = true;
+  try {
+    await dbxUploadText(editorFilePath, textarea.value);
+    saveBtn.textContent = '✓ Saved';
+    setTimeout(function() {
+      saveBtn.textContent = 'Save';
+      saveBtn.disabled    = false;
+      textarea.disabled   = false;
+    }, 1500);
+  } catch (e) {
+    saveBtn.textContent = 'Error!';
+    setTimeout(function() {
+      saveBtn.textContent = 'Save';
+      saveBtn.disabled    = false;
+      textarea.disabled   = false;
+    }, 2500);
+  }
+}
+
+function closeFileEditor() {
+  document.getElementById('text-editor-modal').classList.add('hidden');
+  editorFilePath = null;
 }

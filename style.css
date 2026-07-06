@@ -754,6 +754,87 @@ html, body {
   box-shadow: 0 2px 6px rgba(224,90,43,0.35);
 }
 
+/* ── Class info action buttons ───────────────────────────────────────────────── */
+.class-info-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.class-info-action-btn {
+  flex: 1;
+  padding: 12px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.class-info-action-btn:hover { background: rgba(0,0,0,0.03); border-color: rgba(0,0,0,0.18); }
+
+/* ── Text file editor ────────────────────────────────────────────────────────── */
+.text-editor-modal {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+}
+.text-editor-modal.hidden { display: none !important; }
+.text-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.text-editor-title {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+}
+.editor-save-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-family: var(--font-body);
+  font-weight: 500;
+  cursor: pointer;
+  min-width: 70px;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.editor-save-btn:disabled { background: rgba(0,0,0,0.15); color: var(--muted); cursor: default; }
+.editor-textarea {
+  flex: 1;
+  width: 100%;
+  padding: 16px;
+  border: none;
+  outline: none;
+  resize: none;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-overflow-scrolling: touch;
+}
+.editor-textarea:disabled { opacity: 0.5; }
+
 /* ── Runner screen: fixed-height layout (nothing pushed off screen) ────────── */
 #runner-screen {
   height: 100dvh;

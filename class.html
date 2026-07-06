@@ -139,8 +139,21 @@
       <div class="class-info-section-label">Cue Browser</div>
       <div id="info-cue-display" class="info-cue-display"></div>
       <input type="range" id="info-cue-slider" class="info-cue-slider" min="0" max="0" value="0">
+      <div class="class-info-actions">
+        <button class="class-info-action-btn" onclick="openFileEditor('class.txt')">✎ Edit class.txt</button>
+        <button class="class-info-action-btn" onclick="openFileEditor('notes.txt')">✎ Notes</button>
+      </div>
     </div>
   </div>
+</div>
+
+<div id="text-editor-modal" class="text-editor-modal hidden">
+  <div class="text-editor-header">
+    <button class="icon-btn" onclick="closeFileEditor()">✕</button>
+    <span id="editor-title" class="text-editor-title">—</span>
+    <button class="editor-save-btn" id="editor-save-btn" onclick="saveFileEditor()">Save</button>
+  </div>
+  <textarea id="editor-textarea" class="editor-textarea" spellcheck="false"></textarea>
 </div>
 
 <script src="app.js"></script>
