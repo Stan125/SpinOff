@@ -1006,10 +1006,20 @@ function updateCueCountdown(t) {
     if (nextIdx < track.cues.length) {
       nextAt = track.cues[nextIdx].at;
     } else {
-      // Past the last cue — show next track name instead of a timer
+      // Past the last cue — show countdown to first cue of next track if available
       var nextTrk = tracks[currentTrackIdx + 1];
-      if (cdEl)  cdEl.textContent  = '—';
-      if (lblEl) lblEl.textContent = nextTrk ? 'Up next: ' + nextTrk.song : 'Last cue';
+      if (nextTrk && nextTrk.cues.length) {
+        var buf = audioBuffers[currentTrackIdx];
+        if (buf && cdEl) {
+          cdEl.textContent = formatTime(Math.max(0, buf.duration - t) + nextTrk.cues[0].at);
+        } else if (cdEl) {
+          cdEl.textContent = '—';
+        }
+        if (lblEl) lblEl.textContent = 'Next cue';
+      } else {
+        if (cdEl)  cdEl.textContent  = '—';
+        if (lblEl) lblEl.textContent = nextTrk ? 'Up next: ' + nextTrk.song : 'Last cue';
+      }
       return;
     }
   }
