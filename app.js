@@ -556,7 +556,7 @@ function renderPrepList() {
           (track.artist ? '<span class="prep-artist"> — ' + track.artist + '</span>' : '') + '</div>' +
         '<div class="prep-meta">' + meta.join(' · ') + '</div>' +
       '</div>' +
-      '<span class="type-tag">' + (track.type || '—') + '</span>';
+      '<span class="type-tag">' + zoneLabel(track) + '</span>';
     list.appendChild(row);
   });
 }
@@ -903,7 +903,10 @@ function mountTrack(idx) {
   document.getElementById('song-name').textContent      = track.song;
   fitSongName();
   document.getElementById('song-artist').textContent    = track.artist;
-  document.getElementById('track-type-tag').textContent = track.type;
+  var typeTagEl = document.getElementById('track-type-tag');
+  typeTagEl.textContent = zoneLabel(track);
+  var tagFtps = track.ftps && track.ftps.length ? track.ftps : (track.ftp ? [parseInt(track.ftp)] : []);
+  typeTagEl.className = 'type-tag' + (tagFtps.length ? ' zone-' + ftpZone(tagFtps[0]) : '');
   document.getElementById('meta-bpm').textContent       = track.bpm ? track.bpm + ' RPM' : '—';
 
   // Multi-zone FTP pill
@@ -963,7 +966,7 @@ function mountTrack(idx) {
   if (next) {
     var nextFtps = next.ftps && next.ftps.length ? next.ftps : (next.ftp ? [parseInt(next.ftp)] : []);
     var nextMeta = [];
-    if (next.type) nextMeta.push(next.type);
+    nextMeta.push(zoneLabel(next));
     if (nextFtps.length) nextMeta.push(nextFtps.map(function(f) { return f + '%'; }).join('/') + ' FTP');
     document.getElementById('next-type').textContent = nextMeta.join(' · ');
     var ndEl = document.getElementById('next-duration');
@@ -1400,12 +1403,25 @@ async function refreshCues() {
 // ─── FTP zone ─────────────────────────────────────────────────────────────────
 function ftpZone(ftpPct) {
   var p = parseInt(ftpPct) || 0;
-  if (p < 55)  return 1;  // white   — recovery
-  if (p < 75)  return 2;  // grey    — endurance
-  if (p < 90)  return 3;  // blue    — tempo
-  if (p < 105) return 4;  // green   — threshold
-  if (p < 120) return 5;  // yellow  — VO2 max
-  return 6;               // red     — anaerobic
+  if (p < 55)  return 1;  // white   — Erholung
+  if (p < 75)  return 2;  // grey    — Grundlage
+  if (p < 90)  return 3;  // blue    — Kontrolle
+  if (p < 105) return 4;  // green   — Schwelle
+  if (p < 120) return 5;  // yellow  — Attacke
+  return 6;               // red     — Maximal
+}
+
+var ZONE_NAMES = ['', 'Erholung', 'Grundlage', 'Kontrolle', 'Schwelle', 'Attacke', 'Maximal'];
+
+// Zone label for a track, derived from its %FTP value(s); falls back to type.
+function zoneLabel(track) {
+  var ftps = track.ftps && track.ftps.length ? track.ftps : (track.ftp ? [parseInt(track.ftp)] : []);
+  var names = [];
+  ftps.forEach(function(f) {
+    var n = ZONE_NAMES[ftpZone(f)];
+    if (names[names.length - 1] !== n) names.push(n);
+  });
+  return names.length ? names.join(' → ') : (track.type || '—');
 }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
@@ -1461,6 +1477,8 @@ async function saveFileEditor() {
   if (!editorFilePath) return;
   var saveBtn  = document.getElementById('editor-save-btn');
   var textarea = document.getElementById('editor-textarea');
+  var errEl    = document.getElementById('editor-error');
+  errEl.classList.add('hidden');
   saveBtn.textContent = 'Saving…';
   saveBtn.disabled    = true;
   textarea.disabled   = true;
@@ -1473,12 +1491,12 @@ async function saveFileEditor() {
       textarea.disabled   = false;
     }, 1500);
   } catch (e) {
-    saveBtn.textContent = 'Error!';
-    setTimeout(function() {
-      saveBtn.textContent = 'Save';
-      saveBtn.disabled    = false;
-      textarea.disabled   = false;
-    }, 2500);
+    console.error('saveFileEditor failed:', e);
+    saveBtn.textContent = '✗ Error';
+    saveBtn.disabled    = false;
+    textarea.disabled   = false;
+    errEl.textContent   = e.message || String(e);
+    errEl.classList.remove('hidden');
   }
 }
 

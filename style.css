@@ -834,6 +834,17 @@ html, body {
   -webkit-overflow-scrolling: touch;
 }
 .editor-textarea:disabled { opacity: 0.5; }
+.editor-error {
+  flex-shrink: 0;
+  background: rgba(184,26,26,0.10);
+  border-bottom: 1px solid rgba(184,26,26,0.25);
+  color: #b81a1a;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 10px 16px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 
 /* ── Runner screen: fixed-height layout (nothing pushed off screen) ────────── */
 #runner-screen {
