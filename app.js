@@ -610,8 +610,11 @@ function probeAudioDuration(arrayBuffer, mime) {
       var url  = URL.createObjectURL(blob);
       var el   = document.createElement('audio');
       el.preload = 'metadata';
-      el.onloadedmetadata = function() { URL.revokeObjectURL(url); resolve(isFinite(el.duration) ? el.duration : 0); };
-      el.onerror          = function() { URL.revokeObjectURL(url); resolve(0); };
+      // Detach the source once done so iOS tears down the media player and
+      // frees the blob copy — revoking the URL alone leaves the player alive.
+      function release() { URL.revokeObjectURL(url); el.removeAttribute('src'); el.load(); }
+      el.onloadedmetadata = function() { var d = el.duration; release(); resolve(isFinite(d) ? d : 0); };
+      el.onerror          = function() { release(); resolve(0); };
       el.src = url;
     } catch (e) { resolve(0); }
   });
@@ -625,7 +628,12 @@ async function startClass() {
   // state. Never reuse a context from initRunner — on iOS Safari, AudioBuffers
   // decoded on a suspended context are unreliable when played back.
   if (audioCtx) { try { audioCtx.close(); } catch (e) {} }
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  // Match the pipeline's 44.1 kHz output so decodeAudioData doesn't have to
+  // resample every track (iOS defaults to 48 kHz and resamples slowly).
+  // Older webkitAudioContext rejects the options argument — fall back.
+  var AC = window.AudioContext || window.webkitAudioContext;
+  try { audioCtx = new AC({ sampleRate: 44100 }); }
+  catch (e) { audioCtx = new AC(); }
 
   // iOS unlock: silent 1-sample buffer + explicit resume within the gesture.
   var unlock = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
@@ -693,15 +701,20 @@ async function startClass() {
   trackOffsets = [0];
   playFromOffset(0, 0);
 
-  // Decode remaining tracks in the background (they'll be ready before needed).
+  // Decode remaining tracks in the background, one at a time in play order —
+  // decoding all at once spikes memory on iOS and delays the next track.
+  var ctx = audioCtx;
   for (var i = 0; i < tracks.length; i++) {
     if (i === firstAudioIdx) continue;   // already decoded above
-    (function(idx) {
-      trackArrayBuffer(tracks[idx])
-        .then(function(ab) { return ab ? decodeAudio(audioCtx, ab) : null; })
-        .then(function(buf) { if (buf) audioBuffers[idx] = buf; })
-        .catch(function(e) { console.warn('Decode error track ' + idx + ':', e); });
-    })(i);
+    try {
+      var ab = await trackArrayBuffer(tracks[i]);
+      if (audioCtx !== ctx) return;      // class restarted — abandon this run
+      var buf = ab ? await decodeAudio(ctx, ab) : null;
+      if (audioCtx !== ctx) return;
+      if (buf) audioBuffers[i] = buf;
+    } catch (e) {
+      console.warn('Decode error track ' + i + ':', e);
+    }
   }
 }
 
