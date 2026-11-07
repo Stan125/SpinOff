@@ -645,11 +645,13 @@ async function startClass() {
   // state. Never reuse a context from initRunner — on iOS Safari, AudioBuffers
   // decoded on a suspended context are unreliable when played back.
   if (audioCtx) { try { audioCtx.close(); } catch (e) {} }
-  // Match the pipeline's 44.1 kHz output so decodeAudioData doesn't have to
-  // resample every track (iOS defaults to 48 kHz and resamples slowly).
+  // Force 48 kHz: on iOS, decodeAudioData of AAC into a 44.1 kHz context is
+  // ~100x slower (27 s vs 0.3 s for a 5.5 min track, measured on iPhone).
+  // Without this, the context inherits the output device's rate, which is
+  // 44.1 kHz with some cabled audio interfaces.
   // Older webkitAudioContext rejects the options argument — fall back.
   var AC = window.AudioContext || window.webkitAudioContext;
-  try { audioCtx = new AC({ sampleRate: 44100 }); }
+  try { audioCtx = new AC({ sampleRate: 48000 }); }
   catch (e) { audioCtx = new AC(); }
 
   // iOS unlock: silent 1-sample buffer + explicit resume within the gesture.
