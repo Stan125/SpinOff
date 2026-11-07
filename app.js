@@ -621,24 +621,7 @@ function probeAudioDuration(arrayBuffer, mime) {
 }
 
 // ─── Start class (must be called from a user gesture) ─────────────────────────
-// TEMP startup timing overlay — remove once the slow "Preparing audio…" is understood.
-function showStartupTimings(lines) {
-  var el = document.getElementById('startup-timings');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'startup-timings';
-    el.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:9999;padding:8px;' +
-      'background:rgba(0,0,0,.85);color:#0f0;font:12px/1.4 monospace;white-space:pre-wrap;border-radius:6px';
-    el.onclick = function() { el.remove(); };
-    document.body.appendChild(el);
-  }
-  el.textContent = lines.join('\n') + '\n(tap to close)';
-}
-
 async function startClass() {
-  var tStart = performance.now();
-  var timings = [];
-  function mark(label) { timings.push(label + ': ' + Math.round(performance.now() - tStart) + ' ms'); showStartupTimings(timings); }
   showScreen('runner-screen');
 
   // Create AudioContext inside the user gesture so iOS starts it in a resumable
@@ -660,9 +643,7 @@ async function startClass() {
   unlockSrc.buffer = unlock;
   unlockSrc.connect(audioCtx.destination);
   unlockSrc.start(0);
-  mark('context created (' + audioCtx.sampleRate + ' Hz, ' + audioCtx.state + ')');
   await audioCtx.resume();
-  mark('resume done (' + audioCtx.state + ')');
 
   // iOS silent-switch bypass: play silent WAV through an <audio> element within
   // the same user gesture to promote the session to "playback" category so that
@@ -706,10 +687,7 @@ async function startClass() {
   if (firstAudioIdx >= 0) {
     try {
       var ab0 = await trackArrayBuffer(tracks[firstAudioIdx]);
-      mark('track ' + (firstAudioIdx + 1) + ' bytes ready (' + (ab0 ? (ab0.byteLength / 1e6).toFixed(1) : 0) + ' MB)');
       if (ab0) audioBuffers[firstAudioIdx] = await decodeAudio(audioCtx, ab0);
-      var b0 = audioBuffers[firstAudioIdx];
-      mark('track ' + (firstAudioIdx + 1) + ' decoded' + (b0 ? ' (' + Math.round(b0.duration) + ' s, ' + b0.numberOfChannels + ' ch, ' + b0.sampleRate + ' Hz)' : ''));
     } catch (e) {
       console.error('Decode error track ' + firstAudioIdx + ':', e);
       document.getElementById('cue-text').textContent  = 'Audio error: ' + (e && e.message ? e.message : String(e));
@@ -723,8 +701,7 @@ async function startClass() {
   }
 
   trackOffsets = [0];
-  await playFromOffset(0, 0);
-  mark('playback started');
+  playFromOffset(0, 0);
 
   // Decode remaining tracks in the background, one at a time in play order —
   // decoding all at once spikes memory on iOS and delays the next track.
@@ -737,7 +714,6 @@ async function startClass() {
       var buf = ab ? await decodeAudio(ctx, ab) : null;
       if (audioCtx !== ctx) return;
       if (buf) audioBuffers[i] = buf;
-      mark('bg track ' + (i + 1) + ' decoded');
     } catch (e) {
       console.warn('Decode error track ' + i + ':', e);
     }
