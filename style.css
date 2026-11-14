@@ -872,3 +872,43 @@ html, body {
   min-height: 0;
   overflow-y: auto;
 }
+
+/* ── Listen mode ──────────────────────────────────────────────────────────── */
+.listen-entry {
+  text-decoration: none;
+  color: inherit;
+  margin-bottom: 22px;
+}
+.listen-player {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg);
+  padding: 4px 0 6px;
+  margin-bottom: 14px;
+}
+.listen-card { margin-bottom: 14px; }
+.listen-song {
+  font-family: var(--font-display);
+  font-size: 30px;
+  letter-spacing: 0.5px;
+  line-height: 1.05;
+  margin-bottom: 2px;
+  overflow-wrap: anywhere;
+}
+.listen-artist { margin-bottom: 4px; }
+.listen-progress-row { margin-bottom: 14px; }
+/* Bigger tap target around the thin scrubber line */
+.listen-bar { background-clip: content-box; padding: 10px 0; height: 23px; }
+.listen-bar .track-progress-fill { height: 3px; }
+.ctrl-btn:disabled { opacity: 0.4; cursor: default; }
+.listen-shuffle-btn.active {
+  color: var(--accent);
+  border-color: rgba(224,90,43,0.4);
+  background: rgba(224,90,43,0.10);
+}
+.listen-row { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.listen-row:active { transform: scale(0.99); }
+.listen-row-active { border-color: var(--accent); background: rgba(224,90,43,0.06); }
+.listen-row-active .prep-name { color: var(--accent); }
+.listen-row-error { opacity: 0.45; }

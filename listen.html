@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#f4f1ec">
+  <title>SpinOff · Listen</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="screen">
+  <div class="app-shell listen-shell">
+    <div class="top-bar">
+      <button class="icon-btn" onclick="leaveListen()">←</button>
+      <div class="class-title-sm">Listen</div>
+      <button class="icon-btn listen-shuffle-btn" id="listen-shuffle-btn"
+              onclick="toggleShuffle()" title="Shuffle" aria-pressed="false">⇄</button>
+    </div>
+
+    <div class="listen-player">
+      <div class="song-card listen-card">
+        <div class="song-zone-strip"></div>
+        <div class="song-card-left">
+          <div class="song-label"><span id="listen-pos">—</span></div>
+          <div class="listen-song" id="listen-song">Loading songs…</div>
+          <div class="song-artist listen-artist" id="listen-artist">&nbsp;</div>
+          <div class="prep-meta" id="listen-class">&nbsp;</div>
+        </div>
+      </div>
+
+      <div class="track-progress-row listen-progress-row">
+        <span class="track-time" id="listen-current">0:00</span>
+        <div class="track-progress-bar listen-bar" id="listen-bar" onclick="seekListen(event)">
+          <div class="track-progress-fill" id="listen-fill"></div>
+        </div>
+        <span class="track-time" id="listen-remaining">-0:00</span>
+      </div>
+
+      <div class="controls">
+        <button class="ctrl-btn listen-ctrl" onclick="prevListen()" disabled>PREV</button>
+        <button class="ctrl-btn primary listen-ctrl" id="listen-play-btn" onclick="togglePlayListen()" disabled>PLAY</button>
+        <button class="ctrl-btn listen-ctrl" onclick="nextListen()" disabled>NEXT</button>
+      </div>
+    </div>
+
+    <div class="section-label listen-summary" id="listen-summary">All songs</div>
+    <div id="listen-list" class="prep-list">
+      <div class="loading-state">Loading songs…</div>
+    </div>
+  </div>
+</div>
+
+<audio id="player" preload="auto" playsinline></audio>
+
+<script src="app.js"></script>
+<script src="listen.js"></script>
+<script>
+  window.addEventListener('load', () => {
+    if (!localStorage.getItem('dbx_token')) { window.location.href = 'index.html'; return; }
+    initListen();
+  });
+</script>
+</body>
+</html>
