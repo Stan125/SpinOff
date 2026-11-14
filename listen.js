@@ -1,22 +1,22 @@
 // ─── Listen mode ──────────────────────────────────────────────────────────────
-// Plays every song from every class back to back, without the class runner.
-// Uses a single persistent <audio> element (not Web Audio) so playback keeps
-// going with the phone locked, and wires up the Media Session API for
+// Plays the songs of one class back to back, music only — no cues, no class
+// runner. Uses a single persistent <audio> element (not Web Audio) so playback
+// keeps going with the phone locked, and wires up the Media Session API for
 // lock-screen / Control Center controls.
 //
 // Audio source per song, in priority order:
-//   1. IndexedDB 'audio' store — the same offline copies the class runner
-//      saves, so a song downloaded for a class is never downloaded again
+//   1. IndexedDB 'audio' store — the same offline copies the class screen
+//      saves, so a song downloaded for the class is never downloaded again
 //   2. Dropbox temporary link — streamed, not stored
 //
-// Depends on helpers from app.js (dbxPost, idbGet, idbGetAllKeys, idbOpen,
-// formatTime, formatFolderName, mimeFromPath).
+// Depends on helpers from app.js (dbxPost, dbxDownloadText, parseTxt, idbGet,
+// idbGetAllKeys, formatTime, formatFolderName, mimeFromPath).
 
-var AUDIO_EXT_RE  = /\.(m4a|mp3|aac|wav|flac|ogg|opus|webm)$/i;
 var TEMP_LINK_TTL = 3.5 * 60 * 60 * 1000;   // Dropbox links live 4 h
 var LS_SHUFFLE    = 'spinoff_listen_shuffle';
-var LS_LAST       = 'spinoff_listen_last';
+var LS_LAST       = 'spinoff_listen_last_'; // + class folder path
 
+var classFolder = null;
 var lib        = [];     // [{ path, idbKey, song, artist, className }]
 var order      = [];     // lib indices in play order
 var pos        = -1;     // position in `order`
@@ -29,132 +29,58 @@ var loadToken  = 0;
 var errorRun   = 0;      // consecutive failed tracks — stops runaway skipping
 
 // ─── Library ──────────────────────────────────────────────────────────────────
-function parseSongFilename(filename) {
-  var base = filename
-    .replace(AUDIO_EXT_RE, '')
-    .replace(/^\d+\.\s*/, '')
-    .replace(/\s*\[\d+(\.\d+)?\s*BPM\]\s*$/i, '')
-    .trim();
-  var k = base.indexOf(' - ');
-  return {
-    key:    base.toLowerCase(),
-    artist: k > 0 ? base.slice(0, k) : '',
-    song:   k > 0 ? base.slice(k + 3) : base
-  };
-}
-
-function idbGetAll(store) {
-  return idbOpen().then(function(db) {
-    return new Promise(function(resolve, reject) {
-      var req = db.transaction(store, 'readonly').objectStore(store).getAll();
-      req.onsuccess = function() { resolve(req.result); };
-      req.onerror   = function() { reject(req.error); };
-    });
-  });
-}
-
-// All audio files sitting directly inside a class folder (skips e.g. raw/).
-async function listDropboxAudio() {
-  var data = await dbxPost('/files/list_folder', {
-    path: DBX_ROOT, recursive: true, include_deleted: false,
-    include_mounted_folders: true
-  });
-  var entries = data.entries;
-  while (data.has_more) {
-    data = await dbxPost('/files/list_folder/continue', { cursor: data.cursor });
-    entries = entries.concat(data.entries);
-  }
-  return entries
-    .filter(function(e) {
-      return e['.tag'] === 'file' && AUDIO_EXT_RE.test(e.name) &&
-             e.path_lower.split('/').length === 3;
-    })
-    .map(function(e) {
-      return { path: e.path_lower, name: e.name, folder: e.path_display.split('/')[1] };
-    });
-}
-
-// Offline fallback: songs from classes saved in IndexedDB.
-async function listCachedAudio() {
-  var classes = await idbGetAll('classes').catch(function() { return []; });
-  var out = [];
-  classes.forEach(function(c) {
-    (c.tracks || []).forEach(function(t) {
-      if (!t.audioPath) return;
-      out.push({ path: t.audioPath, name: t.audioPath.split('/').pop(),
-                 folder: c.folderPath.split('/').pop() });
-    });
-  });
-  return out;
-}
-
-async function buildLibrary() {
+// The class's songs in class order. Track metadata comes from the class saved
+// in IndexedDB (written when the class screen was opened), else class.txt.
+async function buildLibrary(folderPath) {
   var audioKeys = await idbGetAllKeys('audio').catch(function() { return []; });
   var cachedByLower = {};
   audioKeys.forEach(function(k) { cachedByLower[k.toLowerCase()] = k; });
 
-  var files, offline = false;
-  try {
-    files = await listDropboxAudio();
-  } catch (e) {
-    console.log('Listen: Dropbox unavailable, using offline songs:', e.message);
-    files = await listCachedAudio();
-    offline = true;
+  var cls = await idbGet('classes', folderPath).catch(function() { return null; });
+  var trackMeta = cls && cls.tracks;
+  if (!trackMeta) {
+    trackMeta = parseTxt(await dbxDownloadText(folderPath + '/class.txt'), folderPath);
   }
-  files.sort(function(a, b) {
-    return a.path.toLowerCase() < b.path.toLowerCase() ? -1 : 1;
-  });
 
-  // The same song often appears in several classes — list it once, and
-  // prefer a copy that's already stored offline.
-  var byKey = {};
-  var items = [];
-  files.forEach(function(f) {
-    var meta   = parseSongFilename(f.name);
-    var idbKey = cachedByLower[f.path.toLowerCase()] || null;
-    if (offline && !idbKey) return;
-    var item = { path: f.path, idbKey: idbKey, song: meta.song, artist: meta.artist,
-                 className: formatFolderName(f.folder) };
-    var existing = byKey[meta.key];
-    if (existing === undefined) {
-      byKey[meta.key] = items.length;
-      items.push(item);
-    } else if (idbKey && !items[existing].idbKey) {
-      items[existing] = item;
-    }
-  });
-  return { items: items, offline: offline };
+  var className = formatFolderName(folderPath.split('/').pop());
+  return trackMeta
+    .map(function(t, n) {
+      if (!t.audioPath) return null;
+      return { path: t.audioPath, idbKey: cachedByLower[t.audioPath.toLowerCase()] || null,
+               song: t.song, artist: t.artist, className: className, trackNo: n + 1 };
+    })
+    .filter(Boolean);
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
-async function initListen() {
+async function initListen(folderPath) {
+  classFolder = folderPath;
   player = document.getElementById('player');
+  document.getElementById('listen-title').textContent =
+    formatFolderName(folderPath.split('/').pop());
   try { shuffleOn = localStorage.getItem(LS_SHUFFLE) === '1'; } catch (e) {}
   renderShuffle();
   bindPlayerEvents();
   bindMediaSession();
 
-  var res;
   try {
-    res = await buildLibrary();
+    lib = await buildLibrary(folderPath);
   } catch (e) {
     showListMessage('Could not load songs: ' + e.message, true);
     return;
   }
-  lib = res.items;
   if (lib.length === 0) {
-    showListMessage(res.offline ? 'Offline, and no songs are stored on this device.'
-                                : 'No songs found.', true);
+    showListMessage('No songs in this class.', true);
     return;
   }
 
   var stored = lib.filter(function(t) { return t.idbKey; }).length;
   document.getElementById('listen-summary').textContent =
-    lib.length + ' songs · ' + stored + ' on device' + (res.offline ? ' · offline' : '');
+    lib.length + ' songs · ' + (stored === lib.length ? 'all' : stored) + ' on device';
 
   // Start where the last session left off (paused — no autoplay)
   var lastPath = null;
-  try { lastPath = localStorage.getItem(LS_LAST); } catch (e) {}
+  try { lastPath = localStorage.getItem(LS_LAST + classFolder); } catch (e) {}
   var startIdx = 0;
   for (var i = 0; i < lib.length; i++) if (lib[i].path === lastPath) { startIdx = i; break; }
 
@@ -222,7 +148,7 @@ async function playAt(p, autoplay) {
   pos = ((p % order.length) + order.length) % order.length;
   var i = order[pos];
   renderNow(i);
-  try { localStorage.setItem(LS_LAST, lib[i].path); } catch (e) {}
+  try { localStorage.setItem(LS_LAST + classFolder, lib[i].path); } catch (e) {}
 
   var src;
   if (prefetched && prefetched.i === i) {
@@ -397,7 +323,7 @@ function renderList() {
       '<div class="prep-info">' +
         '<div class="prep-name">' + escHtml(t.song) +
           (t.artist ? '<span class="prep-artist"> — ' + escHtml(t.artist) + '</span>' : '') + '</div>' +
-        '<div class="prep-meta">' + escHtml(t.className) + '</div>' +
+        '<div class="prep-meta">Track ' + t.trackNo + (t.idbKey ? '' : ' · streams') + '</div>' +
       '</div>';
     row.addEventListener('click', function() { playLibIdx(i); });
     list.appendChild(row);
@@ -415,7 +341,7 @@ function renderNow(i) {
   document.getElementById('listen-song').textContent   = t.song;
   document.getElementById('listen-artist').textContent = t.artist || '—';
   document.getElementById('listen-class').textContent  =
-    t.className + (t.idbKey ? '' : ' · streaming');
+    'Track ' + t.trackNo + (t.idbKey ? '' : ' · streaming');
   document.getElementById('listen-pos').textContent    = (pos + 1) + ' / ' + order.length;
   document.querySelectorAll('.listen-row-active').forEach(function(r) { r.classList.remove('listen-row-active'); });
   var row = document.getElementById('listen-row-' + i);
@@ -456,5 +382,5 @@ function leaveListen() {
   if (player) player.pause();
   releaseSource(current);
   releaseSource(prefetched);
-  window.location.href = 'index.html';
+  window.location.href = 'class.html';
 }

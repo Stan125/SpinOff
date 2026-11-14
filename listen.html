@@ -15,7 +15,7 @@
   <div class="app-shell listen-shell">
     <div class="top-bar">
       <button class="icon-btn" onclick="leaveListen()">←</button>
-      <div class="class-title-sm">Listen</div>
+      <div class="class-title-sm" id="listen-title">Listen</div>
       <button class="icon-btn listen-shuffle-btn" id="listen-shuffle-btn"
               onclick="toggleShuffle()" title="Shuffle" aria-pressed="false">⇄</button>
     </div>
@@ -46,7 +46,7 @@
       </div>
     </div>
 
-    <div class="section-label listen-summary" id="listen-summary">All songs</div>
+    <div class="section-label listen-summary" id="listen-summary">Songs</div>
     <div id="listen-list" class="prep-list">
       <div class="loading-state">Loading songs…</div>
     </div>
@@ -60,7 +60,9 @@
 <script>
   window.addEventListener('load', () => {
     if (!localStorage.getItem('dbx_token')) { window.location.href = 'index.html'; return; }
-    initListen();
+    const classFolder = sessionStorage.getItem('current_class');
+    if (!classFolder) { window.location.href = 'index.html'; return; }
+    initListen(classFolder);
   });
 </script>
 </body>

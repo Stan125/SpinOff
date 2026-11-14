@@ -215,6 +215,12 @@ async function deleteClassCache(folderPath, cardEl) {
   }
 }
 
+// Music-only playback of the current class (listen.html) — works with the
+// phone locked and reuses the audio this screen stored offline.
+function listenToClass() {
+  window.location.href = 'listen.html';
+}
+
 function goHome() {
   releaseWakeLock();
   stopSources();
