@@ -101,16 +101,104 @@ function mimeFromPath(path) {
   return MIME_MAP[path.split('.').pop().toLowerCase()] || 'audio/mpeg';
 }
 
-// Download audio from Dropbox, persist to IndexedDB, return { arrayBuffer, mime }
-async function dbxDownloadBlob(path) {
-  const res = await fetch(DBX_CONTENT + '/files/download', {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + getToken(),
-      'Dropbox-API-Arg': dropboxArg({ path: path })
+// ─── Shared classes (no sign-in) ──────────────────────────────────────────────
+// A class opened from a share link (share.html, see share.js) has no Dropbox
+// sign-in behind it: class.txt and the audio come from public Dropbox links
+// listed in the class's share.json. Opened shares are remembered under
+// SHARES_KEY, keyed by a stand-in folder path ('/~shared-<id>/<class folder>')
+// that is used like a Dropbox folder path everywhere else (current_class,
+// IndexedDB keys, audioPath = folderPath + '/' + file).
+var SHARES_KEY = 'spinoff_shares';
+
+function readShares() {
+  var raw = null;
+  try { raw = localStorage.getItem(SHARES_KEY); } catch (e) {}
+  if (!raw) { try { raw = sessionStorage.getItem(SHARES_KEY); } catch (e) {} }
+  try { return JSON.parse(raw) || {}; } catch (e) { return {}; }
+}
+
+// Also kept in sessionStorage so a share still opens when localStorage is
+// unavailable (e.g. some private-browsing modes).
+function writeShares(shares) {
+  var raw = JSON.stringify(shares);
+  try { localStorage.setItem(SHARES_KEY, raw); } catch (e) {}
+  try { sessionStorage.setItem(SHARES_KEY, raw); } catch (e) {}
+}
+
+function getSharedClass(folderPath) {
+  return folderPath ? (readShares()[folderPath] || null) : null;
+}
+
+// For an audio path inside a shared class: { url } (url undefined if the file
+// isn't in the share). For any other path: null.
+function sharedAudioSource(audioPath) {
+  var shares = readShares();
+  for (var fp in shares) {
+    if (audioPath.indexOf(fp + '/') === 0) {
+      return { url: shares[fp].files[audioPath.slice(fp.length + 1).toLowerCase()] };
     }
-  });
-  if (!res.ok) throw new Error('Audio download failed for ' + path);
+  }
+  return null;
+}
+
+async function fetchPublic(url) {
+  const res = await fetch(url, { cache: 'no-cache' });
+  if (!res.ok) throw new Error('Shared file unavailable (' + res.status + ') — the share may have been stopped');
+  return res;
+}
+
+async function fetchShareManifest(url) {
+  var m;
+  try { m = JSON.parse(await (await fetchPublic(url)).text()); } catch (e) {
+    if (e instanceof SyntaxError) throw new Error('This is not a SpinOff share link');
+    throw e;
+  }
+  if (!m || m.v !== 1 || typeof m.name !== 'string' || typeof m.classTxt !== 'string' ||
+      !m.files || typeof m.files !== 'object') {
+    throw new Error('This is not a SpinOff share link');
+  }
+  return { name: m.name, classTxt: m.classTxt, files: m.files };
+}
+
+// Re-read share.json so a re-share by the owner (e.g. after changing songs)
+// reaches people who opened the class before.
+async function refreshSharedClass(folderPath) {
+  var sh = getSharedClass(folderPath);
+  var m = await fetchShareManifest(sh.manifestUrl);
+  var shares = readShares();
+  shares[folderPath] = Object.assign({}, sh, { classTxt: m.classTxt, files: m.files });
+  writeShares(shares);
+  return shares[folderPath];
+}
+
+// class.txt of a class — from the signed-in Dropbox, or from the public link
+// for a shared class.
+async function loadClassTxt(folderPath) {
+  var sh = getSharedClass(folderPath);
+  if (!sh) return dbxDownloadText(folderPath + '/class.txt');
+  try { sh = await refreshSharedClass(folderPath); }
+  catch (e) { console.log('share.json refresh skipped:', e.message); }
+  return (await fetchPublic(sh.classTxt)).text();
+}
+
+// Download audio (Dropbox, or public link for a shared class), persist to
+// IndexedDB, return { arrayBuffer, mime }
+async function downloadAudio(path) {
+  var res;
+  var shared = sharedAudioSource(path);
+  if (shared) {
+    if (!shared.url) throw new Error('Not part of the share: ' + path.split('/').pop());
+    res = await fetchPublic(shared.url);
+  } else {
+    res = await fetch(DBX_CONTENT + '/files/download', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + getToken(),
+        'Dropbox-API-Arg': dropboxArg({ path: path })
+      }
+    });
+    if (!res.ok) throw new Error('Audio download failed for ' + path);
+  }
   var arrayBuf = await res.arrayBuffer();
   var mime = mimeFromPath(path);
   // Persist to IndexedDB so this class works offline next time
@@ -461,7 +549,7 @@ async function initRunner(folderPath) {
     // cached metadata may be stale if the file was saved by an older app
     // version that didn't parse all fields.  Audio stays from cache.
     try {
-      var metaTxt = await dbxDownloadText(folderPath + '/class.txt');
+      var metaTxt = await loadClassTxt(folderPath);
       var freshMeta = parseTxt(metaTxt, folderPath);
       for (var mi = 0; mi < tracks.length && mi < freshMeta.length; mi++) {
         tracks[mi].bpm        = freshMeta[mi].bpm;
@@ -486,7 +574,7 @@ async function initRunner(folderPath) {
     // ── Download from Dropbox ─────────────────────────────────────────────────
     var txt;
     try {
-      txt = await dbxDownloadText(folderPath + '/class.txt');
+      txt = await loadClassTxt(folderPath);
     } catch (e) {
       document.getElementById('prep-track-list').innerHTML =
         '<div class="empty-state error">Could not load class.txt<br>' + e.message + '</div>';
@@ -506,7 +594,7 @@ async function initRunner(folderPath) {
       if (tracks[i].audioPath) {
         setPrepStatus(i, 'loading');
         try {
-          var dl = await dbxDownloadBlob(tracks[i].audioPath);
+          var dl = await downloadAudio(tracks[i].audioPath);
           tracks[i].rawArrayBuffer = dl.arrayBuffer;
           tracks[i].mime = dl.mime;
           setPrepStatus(i, 'ok');
@@ -523,7 +611,7 @@ async function initRunner(folderPath) {
       }
     }
 
-    // Save class metadata to IDB (audio was already saved inside dbxDownloadBlob)
+    // Save class metadata to IDB (audio was already saved inside downloadAudio)
     var trackMeta = tracks.map(function(t) {
       return { song: t.song, artist: t.artist, type: t.type, bpm: t.bpm, ftp: t.ftp, ftps: t.ftps || [],
                resistance: t.resistance, audioPath: t.audioPath, cues: t.cues, blobUrl: null };
@@ -1383,7 +1471,7 @@ async function refreshCues() {
   var btn = document.getElementById('refresh-cues-btn');
   if (btn) { btn.textContent = '↻ Refreshing…'; btn.disabled = true; }
   try {
-    var txt = await dbxDownloadText(folderPath + '/class.txt');
+    var txt = await loadClassTxt(folderPath);
     var freshTracks = parseTxt(txt, folderPath);
     var totalCues = 0;
     for (var i = 0; i < tracks.length && i < freshTracks.length; i++) {
@@ -1412,7 +1500,7 @@ async function refreshCues() {
     if (btn) {
       btn.textContent = '✓ Updated (' + totalCues + ' cues)';
       setTimeout(function() {
-        btn.textContent = '↻ Refresh cues from Dropbox';
+        btn.textContent = '↻ Refresh cues';
         btn.disabled = false;
       }, 2500);
     }

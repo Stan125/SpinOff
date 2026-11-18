@@ -922,3 +922,43 @@ html, body {
 .listen-row-active { border-color: var(--accent); background: rgba(224,90,43,0.06); }
 .listen-row-active .prep-name { color: var(--accent); }
 .listen-row-error { opacity: 0.45; }
+
+/* ── Class sharing ───────────────────────────────────────────────────────────── */
+.shared-class .owner-only { display: none !important; }
+
+.shared-section { width: 100%; max-width: 420px; text-align: left; }
+.auth-center .shared-section { margin-bottom: 12px; }
+
+.share-body { padding: 18px 20px 24px; overflow-y: auto; }
+.share-url {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.share-actions { display: flex; gap: 10px; margin-top: 10px; }
+.share-status {
+  margin-top: 14px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.share-status:empty { display: none; }
+.share-status.error { color: var(--accent); }
+.share-stop-btn {
+  width: 100%;
+  margin-top: 18px;
+  padding: 10px;
+  background: none;
+  border: none;
+  color: #999;
+  font-family: var(--font-body);
+  font-size: 13px;
+  cursor: pointer;
+}
+.share-stop-btn:hover:not(:disabled) { color: var(--accent); }
+.share-stop-btn:disabled { opacity: 0.5; cursor: default; }

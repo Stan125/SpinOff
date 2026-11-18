@@ -18,6 +18,7 @@
   <div class="auth-center">
     <div class="logo">SpinOff</div>
     <div class="logo-sub">your AI spin coach</div>
+    <div id="shared-auth" class="shared-section hidden"></div>
     <button class="btn-primary" onclick="startDropboxAuth()">Connect Dropbox</button>
     <a href="demo.html" class="demo-link">Try demo (no login needed)</a>
     <div class="install-hint" id="install-hint" style="display:none">
@@ -40,6 +41,7 @@
     <div id="class-list" class="class-list">
       <div class="loading-state">Loading classes…</div>
     </div>
+    <div id="shared-home" class="shared-section hidden" style="margin-top:28px"></div>
     <button onclick="forceUpdate()"
             style="width:100%;margin-top:16px;padding:10px;background:none;border:none;color:#999;font-size:13px;cursor:pointer">
       ↻ Reload latest version
@@ -48,14 +50,17 @@
 </div>
 
 <script src="app.js"></script>
+<script src="share.js"></script>
 <script>
   window.addEventListener('load', () => {
     const token = localStorage.getItem('dbx_token');
     if (token) {
       showScreen('home-screen');
       loadClasses();
+      renderSharedClasses('shared-home');
     } else {
       showScreen('auth-screen');
+      renderSharedClasses('shared-auth');
       const isStandalone = window.navigator.standalone;
       if (!isStandalone) {
         document.getElementById('install-hint').style.display = 'block';

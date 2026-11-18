@@ -26,13 +26,17 @@
             style="width:100%;margin-top:20px">Downloading…</button>
     <button class="btn-secondary" onclick="listenToClass()"
             style="width:100%;margin-top:10px">♫ Just listen to the songs</button>
+    <button class="owner-only" onclick="shareClass()"
+            style="width:100%;margin-top:10px;padding:10px;background:none;border:none;color:#999;font-size:13px;cursor:pointer">
+      ⇪ Share this class…
+    </button>
     <button id="clear-cache-btn" onclick="clearClassCache()"
             style="width:100%;margin-top:10px;padding:10px;background:none;border:none;color:#999;font-size:13px;cursor:pointer">
       Clear downloaded audio &amp; re-download
     </button>
     <button id="refresh-cues-btn" onclick="refreshCues()"
             style="width:100%;margin-top:4px;padding:10px;background:none;border:none;color:#999;font-size:13px;cursor:pointer">
-      ↻ Refresh cues from Dropbox
+      ↻ Refresh cues
     </button>
   </div>
 </div>
@@ -141,10 +145,30 @@
       <div class="class-info-section-label">Cue Browser</div>
       <div id="info-cue-display" class="info-cue-display"></div>
       <input type="range" id="info-cue-slider" class="info-cue-slider" min="0" max="0" value="0">
-      <div class="class-info-actions">
+      <div class="class-info-actions owner-only">
         <button class="class-info-action-btn" onclick="openFileEditor('class.txt')">✎ Edit class.txt</button>
         <button class="class-info-action-btn" onclick="openFileEditor('notes.txt')">✎ Notes</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div id="share-modal" class="cue-list-modal hidden" onclick="hideShareModal()">
+  <div class="cue-list-sheet" onclick="event.stopPropagation()">
+    <div class="cue-list-header">
+      <span>Share Class</span>
+      <button class="cue-list-close" onclick="hideShareModal()">✕</button>
+    </div>
+    <div class="share-body">
+      <div id="share-link-box" class="hidden">
+        <input id="share-url" class="share-url" readonly onclick="this.select()">
+        <div class="share-actions">
+          <button class="class-info-action-btn" id="share-copy-btn" onclick="copyShareUrl()">Copy link</button>
+          <button class="class-info-action-btn" id="share-native-btn" onclick="nativeShareUrl()">Share…</button>
+        </div>
+      </div>
+      <div id="share-status" class="share-status"></div>
+      <button id="share-stop-btn" class="share-stop-btn" onclick="stopSharing()">Stop sharing</button>
     </div>
   </div>
 </div>
@@ -160,12 +184,16 @@
 </div>
 
 <script src="app.js"></script>
+<script src="share.js"></script>
 <script>
   window.addEventListener('load', () => {
     const token = localStorage.getItem('dbx_token');
-    if (!token) { window.location.href = 'index.html'; return; }
     const classFolder = sessionStorage.getItem('current_class');
     if (!classFolder) { window.location.href = 'index.html'; return; }
+    const shared = getSharedClass(classFolder);
+    if (!token && !shared) { window.location.href = 'index.html'; return; }
+    // Shared classes are read-only: no sharing, no editing
+    document.body.classList.toggle('shared-class', !!shared);
     initRunner(classFolder);
   });
 </script>

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f4f1ec">
+  <title>SpinOff · Shared class</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="auth-center screen">
+  <div class="logo">SpinOff</div>
+  <div class="logo-sub" id="share-msg">Opening shared class…</div>
+  <a href="index.html" class="demo-link hidden" id="share-home">Go to SpinOff</a>
+</div>
+<script src="app.js"></script>
+<script src="share.js"></script>
+<script>
+  // Link format: share.html#<path of share.json on dl.dropboxusercontent.com>
+  // (the fragment never reaches the web server).
+  openShareLink(window.location.hash.substring(1))
+    .then(function(folderPath) {
+      sessionStorage.setItem('current_class', folderPath);
+      window.location.replace('class.html');
+    })
+    .catch(function(e) {
+      document.getElementById('share-msg').textContent = 'Could not open this class: ' + e.message;
+      document.getElementById('share-home').classList.remove('hidden');
+    });
+</script>
+</body>
+</html>

@@ -1,10 +1,12 @@
-const CACHE = 'spinoff-v26';
+const CACHE = 'spinoff-v27';
 const STATIC = [
   './',
   './index.html',
   './class.html',
   './listen.html',
   './listen.js',
+  './share.html',
+  './share.js',
   './demo.html',
   './auth.html',
   './logout.html',

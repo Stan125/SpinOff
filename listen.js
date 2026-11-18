@@ -8,9 +8,11 @@
 //   1. IndexedDB 'audio' store — the same offline copies the class screen
 //      saves, so a song downloaded for the class is never downloaded again
 //   2. Dropbox temporary link — streamed, not stored
+//   (shared classes: downloaded via the public link and stored, see sourceFor)
 //
-// Depends on helpers from app.js (dbxPost, dbxDownloadText, parseTxt, idbGet,
-// idbGetAllKeys, formatTime, formatFolderName, mimeFromPath).
+// Depends on helpers from app.js (dbxPost, loadClassTxt, downloadAudio,
+// sharedAudioSource, parseTxt, idbGet, idbGetAllKeys, formatTime,
+// formatFolderName, mimeFromPath).
 
 var TEMP_LINK_TTL = 3.5 * 60 * 60 * 1000;   // Dropbox links live 4 h
 var LS_SHUFFLE    = 'spinoff_listen_shuffle';
@@ -39,7 +41,7 @@ async function buildLibrary(folderPath) {
   var cls = await idbGet('classes', folderPath).catch(function() { return null; });
   var trackMeta = cls && cls.tracks;
   if (!trackMeta) {
-    trackMeta = parseTxt(await dbxDownloadText(folderPath + '/class.txt'), folderPath);
+    trackMeta = parseTxt(await loadClassTxt(folderPath), folderPath);
   }
 
   var className = formatFolderName(folderPath.split('/').pop());
@@ -113,6 +115,14 @@ async function sourceFor(i) {
       var blob = new Blob([rec.buffer], { type: rec.mime || mimeFromPath(item.path) });
       return { i: i, url: URL.createObjectURL(blob), blob: true };
     }
+  }
+  // Shared class: download through the public link (also stores it offline)
+  // and play from a blob with the right MIME type — Dropbox serves public
+  // downloads as a generic binary type, which iOS may refuse to stream.
+  if (sharedAudioSource(item.path)) {
+    var dl = await downloadAudio(item.path);
+    item.idbKey = item.path;
+    return { i: i, url: URL.createObjectURL(new Blob([dl.arrayBuffer], { type: dl.mime })), blob: true };
   }
   var cachedLink = tempLinks[item.path];
   if (!cachedLink || Date.now() - cachedLink.at > TEMP_LINK_TTL) {

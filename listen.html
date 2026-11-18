@@ -59,9 +59,11 @@
 <script src="listen.js"></script>
 <script>
   window.addEventListener('load', () => {
-    if (!localStorage.getItem('dbx_token')) { window.location.href = 'index.html'; return; }
     const classFolder = sessionStorage.getItem('current_class');
     if (!classFolder) { window.location.href = 'index.html'; return; }
+    if (!localStorage.getItem('dbx_token') && !getSharedClass(classFolder)) {
+      window.location.href = 'index.html'; return;
+    }
     initListen(classFolder);
   });
 </script>
