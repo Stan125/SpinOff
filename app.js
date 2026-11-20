@@ -485,7 +485,10 @@ var trackOffsets    = [0];   // cumulative class seconds at the start of each tr
 
 // ─── Web Audio engine globals ─────────────────────────────────────────────────
 var audioCtx            = null;
-var audioBuffers        = [];    // decoded AudioBuffer per track index
+var audioBuffers        = [];    // decoded AudioBuffer per track index — only a window
+                                 // (current + next) is kept, see ensureDecoded()
+var decodePromises      = [];    // in-flight decode per track index
+var playToken           = 0;     // bumped by stopSources(); stale async plays abort
 var currentSource       = null;  // currently playing AudioBufferSourceNode
 var nextSource          = null;  // pre-scheduled next AudioBufferSourceNode
 var trackStartCtxTime   = 0;     // audioCtx.currentTime when track position 0 would be
@@ -751,71 +754,89 @@ async function startClass() {
     setTimeout(function() { URL.revokeObjectURL(silentUrl); }, 6000);
   } catch (e) { console.warn('Silent audio bypass failed:', e); }
 
-  // Decode track 0 first so playback starts with minimal delay, then decode
-  // the remaining tracks in the background while the class is running.
-  audioBuffers = new Array(tracks.length).fill(null);
+  // Tracks are decoded lazily: only the playing track and the next one are kept
+  // as PCM (see ensureDecoded / keepOnlyWindow). Decoded audio is ~23 MB per
+  // minute at 48 kHz stereo, so decoding a whole 96-minute class (~2.2 GB) got the
+  // page killed by iOS ("A problem repeatedly occurred") seconds after Start.
+  audioBuffers   = new Array(tracks.length).fill(null);
+  decodePromises = new Array(tracks.length).fill(null);
   document.getElementById('cue-text').textContent  = 'Preparing audio…';
   document.getElementById('cue-label').textContent = '';
   document.getElementById('cue-next-text').textContent = '';
 
-  // Helper: get an ArrayBuffer for a track — prefers rawArrayBuffer (IDB cache
-  // path) to avoid the blob-URL fetch round-trip that fails silently on iOS.
-  function trackArrayBuffer(track) {
-    if (track.rawArrayBuffer) {
-      var ab = track.rawArrayBuffer;
-      track.rawArrayBuffer = null;   // detached after decodeAudioData; clear ref
-      return Promise.resolve(ab);
-    }
-    if (track.blobUrl) {
-      return fetch(track.blobUrl).then(function(r) { return r.arrayBuffer(); });
-    }
-    return Promise.resolve(null);
-  }
-
-  // Decode the first track that actually has audio so playback can start
-  // immediately, then decode the rest in the background.
-  var firstAudioIdx = -1;
-  for (var fi = 0; fi < tracks.length; fi++) {
-    if (tracks[fi].rawArrayBuffer || tracks[fi].blobUrl) { firstAudioIdx = fi; break; }
-  }
-  if (firstAudioIdx >= 0) {
-    try {
-      var ab0 = await trackArrayBuffer(tracks[firstAudioIdx]);
-      if (ab0) audioBuffers[firstAudioIdx] = await decodeAudio(audioCtx, ab0);
-    } catch (e) {
-      console.error('Decode error track ' + firstAudioIdx + ':', e);
-      document.getElementById('cue-text').textContent  = 'Audio error: ' + (e && e.message ? e.message : String(e));
-      document.getElementById('cue-label').textContent = 'Format may be unsupported on this device';
-      return;
-    }
-  } else {
+  var firstAudioIdx = nextAudioIdx(0);
+  if (firstAudioIdx >= tracks.length) {
     document.getElementById('cue-text').textContent  = 'No audio found';
     document.getElementById('cue-label').textContent = 'Check that tracks have audio files';
+    return;
+  }
+  var first = await ensureDecoded(firstAudioIdx);
+  if (!first) {
+    document.getElementById('cue-text').textContent  = 'Audio error';
+    document.getElementById('cue-label').textContent = 'Format may be unsupported on this device';
     return;
   }
 
   trackOffsets = [0];
   playFromOffset(0, 0);
+}
 
-  // Decode remaining tracks in the background, one at a time in play order —
-  // decoding all at once spikes memory on iOS and delays the next track.
+// ─── Lazy decoding ────────────────────────────────────────────────────────────
+function hasAudio(i) {
+  var t = tracks[i];
+  return !!(t && (t.rawArrayBuffer || t.blobUrl));
+}
+
+// First index ≥ i that has audio (tracks.length if none).
+function nextAudioIdx(i) {
+  while (i < tracks.length && !hasAudio(i)) i++;
+  return i;
+}
+
+// Track length in seconds: decoded buffer if present, else the probed duration.
+function trackDuration(i) {
+  if (audioBuffers[i]) return audioBuffers[i].duration;
+  return (tracks[i] && tracks[i].duration) || 0;
+}
+
+// Decode track i (once; concurrent callers share the promise). The compressed
+// ArrayBuffer is kept — decodeAudioData detaches what it is given, so it gets a
+// copy — so a track freed by keepOnlyWindow() can be decoded again (prev / seek).
+function ensureDecoded(i) {
+  if (i < 0 || i >= tracks.length || !hasAudio(i)) return Promise.resolve(null);
+  if (audioBuffers[i]) return Promise.resolve(audioBuffers[i]);
+  if (decodePromises[i]) return decodePromises[i];
   var ctx = audioCtx;
-  for (var i = 0; i < tracks.length; i++) {
-    if (i === firstAudioIdx) continue;   // already decoded above
-    try {
-      var ab = await trackArrayBuffer(tracks[i]);
-      if (audioCtx !== ctx) return;      // class restarted — abandon this run
-      var buf = ab ? await decodeAudio(ctx, ab) : null;
-      if (audioCtx !== ctx) return;
-      if (buf) audioBuffers[i] = buf;
-    } catch (e) {
-      console.warn('Decode error track ' + i + ':', e);
-    }
+  var t = tracks[i];
+  var abP = t.rawArrayBuffer
+    ? Promise.resolve(t.rawArrayBuffer.slice(0))
+    : fetch(t.blobUrl).then(function(r) { return r.arrayBuffer(); });
+  var p = abP.then(function(ab) { return decodeAudio(ctx, ab); }).then(function(buf) {
+    decodePromises[i] = null;
+    if (audioCtx !== ctx) return null;      // class restarted meanwhile
+    audioBuffers[i] = buf;
+    if (buf) tracks[i].duration = buf.duration;
+    return buf;
+  }, function(e) {
+    decodePromises[i] = null;
+    console.warn('Decode error track ' + i + ':', e);
+    return null;
+  });
+  decodePromises[i] = p;
+  return p;
+}
+
+// Free decoded PCM for every track except idx and the next track with audio.
+function keepOnlyWindow(idx) {
+  var keepNext = nextAudioIdx(idx + 1);
+  for (var i = 0; i < audioBuffers.length; i++) {
+    if (i !== idx && i !== keepNext) audioBuffers[i] = null;
   }
 }
 
 // ─── Web Audio engine ─────────────────────────────────────────────────────────
 function stopSources() {
+  playToken++;   // any playFromOffset / next-track decode still in flight is now stale
   if (nextTransitionTimer) { clearTimeout(nextTransitionTimer); nextTransitionTimer = null; }
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
   if (currentSource) { try { currentSource.stop(); } catch (e) {} currentSource = null; }
@@ -829,8 +850,10 @@ async function playFromOffset(idx, offset) {
   // Ensure context is running (iOS may suspend it again after a pause)
   if (audioCtx.state !== 'running') await audioCtx.resume();
 
-  // Skip tracks without a decoded buffer
-  while (idx < tracks.length && !audioBuffers[idx]) {
+  var token = playToken;
+
+  // Skip tracks without audio
+  while (idx < tracks.length && !hasAudio(idx)) {
     trackOffsets[idx + 1] = trackOffsets[idx] || 0;
     idx++;
   }
@@ -842,7 +865,15 @@ async function playFromOffset(idx, offset) {
   currentCueIdx   = -1;
   mountTrack(idx);
 
-  var buffer = audioBuffers[idx];
+  // Decode on demand (prev / jump / seek to a track outside the kept window)
+  var buffer = await ensureDecoded(idx);
+  if (token !== playToken) return;           // paused or another play started meanwhile
+  if (!buffer) {                             // undecodable — skip it
+    trackOffsets[idx + 1] = trackOffsets[idx] || 0;
+    playFromOffset(idx + 1, 0);
+    return;
+  }
+  keepOnlyWindow(idx);
   var now    = audioCtx.currentTime;
   trackStartCtxTime = now - offset;
 
@@ -866,47 +897,51 @@ function scheduleNextSource(idx) {
 
   // Find the next track that has audio
   var nextIdx = idx + 1;
-  var audioNextIdx = nextIdx;
-  while (audioNextIdx < tracks.length && !audioBuffers[audioNextIdx]) audioNextIdx++;
+  var audioNextIdx = nextAudioIdx(nextIdx);
 
   // When (in audioCtx time) track idx ends
   var nextStartCtxTime = trackStartCtxTime + buffer.duration;
   var msUntilNext = (nextStartCtxTime - audioCtx.currentTime) * 1000;
+  var token = playToken;
 
-  // Sample-accurate: start next audio node exactly when current one ends
+  // Sample-accurate: start next audio node exactly when current one ends. The next
+  // track is decoded now (≈0.3 s on iPhone) — long before the current one ends.
   if (audioNextIdx < tracks.length) {
-    nextSource = audioCtx.createBufferSource();
-    nextSource.buffer = audioBuffers[audioNextIdx];
-    nextSource.connect(audioCtx.destination);
-    nextSource.start(nextStartCtxTime, 0);
+    ensureDecoded(audioNextIdx).then(function(nbuf) {
+      if (token !== playToken || !nbuf || nextSource) return;
+      if (audioCtx.currentTime > nextStartCtxTime - 0.05) return;   // too late — timer falls back
+      nextSource = audioCtx.createBufferSource();
+      nextSource.buffer = nbuf;
+      nextSource.connect(audioCtx.destination);
+      nextSource.start(nextStartCtxTime, 0);
+    });
   }
 
   // UI update fires at the same moment (wall-clock approximation — audio is already locked in)
   nextTransitionTimer = setTimeout(function() {
     nextTransitionTimer = null;
-    if (nextIdx >= tracks.length) { endOfClass(); return; }
+    if (audioNextIdx >= tracks.length) { endOfClass(); return; }
 
-    // Fill in offsets for any skipped (no-audio) tracks
+    // Fill in offsets for the finished track and any skipped (no-audio) tracks
     for (var i = idx; i < audioNextIdx; i++) {
-      trackOffsets[i + 1] = (trackOffsets[i] || 0) + (audioBuffers[i] ? audioBuffers[i].duration : 0);
+      trackOffsets[i + 1] = (trackOffsets[i] || 0) + (i === idx ? buffer.duration : 0);
+    }
+
+    if (!nextSource) {
+      // Next track wasn't decoded in time (or failed): start it the slow way.
+      playFromOffset(audioNextIdx, 0);
+      return;
     }
 
     // The pre-scheduled nextSource is now the active source
     currentSource = nextSource;
     nextSource = null;
     trackStartCtxTime = nextStartCtxTime;
-    currentTrackIdx = audioNextIdx < tracks.length ? audioNextIdx : nextIdx;
+    currentTrackIdx = audioNextIdx;
     currentCueIdx = -1;
     mountTrack(currentTrackIdx);
-
-    if (audioNextIdx < tracks.length) {
-      scheduleNextSource(currentTrackIdx);
-    } else {
-      // nextSource wasn't pre-scheduled (buffer wasn't decoded yet at schedule time,
-      // or truly no more tracks). Re-enter playFromOffset so it can find the now-
-      // decoded buffer, or end the class if there genuinely are no more tracks.
-      playFromOffset(nextIdx, 0);
-    }
+    keepOnlyWindow(currentTrackIdx);          // free the finished track's PCM
+    scheduleNextSource(currentTrackIdx);
   }, Math.max(0, msUntilNext));
 }
 
@@ -935,8 +970,8 @@ function startRaf() {
 function fillNextDuration() {
   var el = document.getElementById('next-duration');
   if (el) {
-    var buf = audioBuffers[currentTrackIdx + 1];
-    var val = buf ? formatTime(buf.duration) : '';
+    var nd = trackDuration(currentTrackIdx + 1);
+    var val = nd ? formatTime(nd) : '';
     if (el.textContent !== val) el.textContent = val;
   }
 }
@@ -1079,7 +1114,7 @@ function mountTrack(idx) {
     if (nextFtps.length) nextMeta.push(nextFtps.map(function(f) { return f + '%'; }).join('/') + ' FTP');
     document.getElementById('next-type').textContent = nextMeta.join(' · ');
     var ndEl = document.getElementById('next-duration');
-    if (ndEl) ndEl.textContent = audioBuffers[idx + 1] ? formatTime(audioBuffers[idx + 1].duration) : '';
+    if (ndEl) ndEl.textContent = trackDuration(idx + 1) ? formatTime(trackDuration(idx + 1)) : '';
     if (nextCardEl) {
       var ns = nextCardStyle(nextFtps);
       nextCardEl.style.background  = ns.bg;
@@ -1238,8 +1273,7 @@ function hideCueList() {
 
 // ─── Progress display ─────────────────────────────────────────────────────────
 function updateTrackProgress(t) {
-  var buffer = audioBuffers[currentTrackIdx];
-  var dur = buffer ? buffer.duration : 0;
+  var dur = trackDuration(currentTrackIdx);
   var cur = Math.max(0, Math.min(t, dur));
   var remaining = Math.max(0, dur - cur);
   document.getElementById('track-current').textContent = formatTime(cur);
@@ -1342,8 +1376,7 @@ function nextTrack() {
   if (nextIdx >= tracks.length) return;
   // Ensure offset is recorded
   if (!trackOffsets[nextIdx]) {
-    trackOffsets[nextIdx] = (trackOffsets[currentTrackIdx] || 0) +
-      (audioBuffers[currentTrackIdx] ? audioBuffers[currentTrackIdx].duration : 0);
+    trackOffsets[nextIdx] = (trackOffsets[currentTrackIdx] || 0) + trackDuration(currentTrackIdx);
   }
   if (isPlaying) {
     playFromOffset(nextIdx, 0);
@@ -1370,11 +1403,11 @@ function prevTrack() {
 }
 
 function seekTrack(e) {
-  if (!audioCtx || !audioBuffers[currentTrackIdx]) return;
+  if (!audioCtx || !trackDuration(currentTrackIdx)) return;
   var bar  = document.getElementById('track-bar');
   var rect = bar.getBoundingClientRect();
   var pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-  var newOffset = pct * audioBuffers[currentTrackIdx].duration;
+  var newOffset = pct * trackDuration(currentTrackIdx);
   if (isPlaying) {
     playFromOffset(currentTrackIdx, newOffset);
   } else {
